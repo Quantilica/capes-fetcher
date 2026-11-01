@@ -199,11 +199,11 @@ class CapesLakeConverter:
 
                 writer = writers[ds_type]
                 try:
-                    # Decode with latin-1 (standard for CAPES), fallback to utf-8
+                    # Try UTF-8 with BOM first, then UTF-8, then fallback to latin-1
                     try:
-                        text = data_bytes.decode("latin-1")
+                        text = data_bytes.decode("utf-8-sig")
                     except UnicodeDecodeError:
-                        text = data_bytes.decode("utf-8-sig", errors="replace")
+                        text = data_bytes.decode("latin-1", errors="replace")
 
                     # Try semicolon separator, fallback to comma
                     sep = ";" if ";" in text[:2000] else ","

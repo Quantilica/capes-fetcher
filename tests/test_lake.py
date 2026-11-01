@@ -139,3 +139,26 @@ def test_convert_programas_and_cursos(tmp_path: Path) -> None:
     ds_cursos = lake_dir / "capes" / "cursos"
     assert not check_dataset(ds_cursos)
     assert (ds_cursos / "ano=2023").is_dir()
+
+
+def test_convert_teses_utf8_encoding(tmp_path: Path) -> None:
+    """Test that UTF-8 files with non-ASCII characters are parsed without mojibake."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    lake_dir = tmp_path / "lake"
+    lake_dir.mkdir()
+
+    csv_utf8 = (
+        "AN_BASE;CD_PROGRAMA;NM_AUTOR;NM_PRODUCAO;NM_ORIENTADOR\n"
+        "2024;33001P1;JOSÉ ANTÔNIO DA CONCEIÇÃO;AVALIAÇÃO DE DADOS;MARIA CLÁUDIA\n"
+    )
+    (raw_dir / "br-capes-btd-2024@20261101.csv").write_text(csv_utf8, encoding="utf-8")
+
+    res = converter.convert(raw_dir.parent, lake_dir)
+    assert res.converted == 1
+    assert not res.errors
+
+    p = lake_dir / "capes" / "teses" / "ano=2024"
+    df = pl.read_parquet(list(p.glob("*.parquet"))[0])
+    assert df["autor"][0] == "JOSÉ ANTÔNIO DA CONCEIÇÃO"
+    assert df["titulo"][0] == "AVALIAÇÃO DE DADOS"
