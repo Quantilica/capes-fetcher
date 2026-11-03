@@ -162,3 +162,128 @@ def test_convert_teses_utf8_encoding(tmp_path: Path) -> None:
     df = pl.read_parquet(list(p.glob("*.parquet"))[0])
     assert df["autor"][0] == "JOSÉ ANTÔNIO DA CONCEIÇÃO"
     assert df["titulo"][0] == "AVALIAÇÃO DE DADOS"
+
+
+def _partitions(ds_dir: Path) -> dict[str, int]:
+    """Linhas por diretório de partição ``ano=...``."""
+    return {
+        d.name: sum(pl.read_parquet(f).height for f in d.glob("*.parquet"))
+        for d in sorted(ds_dir.glob("ano=*"))
+    }
+
+
+def test_multi_year_csv_is_split_per_row(tmp_path: Path) -> None:
+    """Regressão A4: CSV multi-ano era gravado inteiro na partição da 1ª linha."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    csv = (
+        "AN_BASE;CD_PROGRAMA;NM_AUTOR;NM_PRODUCAO\n"
+        "2019;1;A;T1\n2020;2;B;T2\n2020;3;C;T3\n2021;4;D;T4\n"
+    )
+    (raw_dir / "br-capes-btd-2019-2021@20261101.csv").write_text(csv, "utf-8")
+
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors
+    assert res.converted == 3
+    ds = tmp_path / "lake" / "capes" / "teses"
+    assert not check_dataset(ds)
+    assert _partitions(ds) == {"ano=2019": 1, "ano=2020": 2, "ano=2021": 1}
+
+
+def test_row_without_valid_year_goes_to_quarantine(tmp_path: Path, caplog) -> None:
+    """Linha sem ano válido não ganha ano inventado (antes: fallback 2024)."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    csv = "AN_BASE;CD_PROGRAMA;NM_AUTOR\n2020;1;A\n;2;B\nxx;3;C\n"
+    (raw_dir / "br-capes-btd-2020@20261101.csv").write_text(csv, "utf-8")
+
+    with caplog.at_level("WARNING"):
+        res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors
+    ds = tmp_path / "lake" / "capes" / "teses"
+    parts = _partitions(ds)
+    assert parts["ano=2020"] == 1
+    assert parts["ano=__HIVE_DEFAULT_PARTITION__"] == 2
+    assert "2 linha(s) sem ano valido" in caplog.text
+
+
+def test_no_year_anywhere_is_an_error_not_2024(tmp_path: Path) -> None:
+    """Sem coluna de ano e sem ano no nome: erro contado, nada gravado."""
+    raw_dir = tmp_path / "raw" / "pos"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "programas_pos_graduacao@20261101.csv").write_text(
+        "CD_PROGRAMA;NM_PROGRAMA\n1;X\n", "utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert res.converted == 0
+    assert len(res.errors) == 1
+    assert not list((tmp_path / "lake").rglob("ano=*"))
+
+
+def test_year_declared_in_filename_when_no_year_column(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "pos"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "programas_pos_graduacao_2022@20261101.csv").write_text(
+        "CD_PROGRAMA;NM_PROGRAMA\n1;X\n2;Y\n", "utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors
+    ds = tmp_path / "lake" / "capes" / "programas"
+    assert _partitions(ds) == {"ano=2022": 2}
+
+
+def test_teses_with_both_entity_columns_does_not_collide(tmp_path: Path) -> None:
+    """Hipótese do auditor: CD_ENTIDADE_ENSINO e CD_ENTIDADE_CAPES -> codigo_ies."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    csv = (
+        "AN_BASE;CD_ENTIDADE_ENSINO;CD_ENTIDADE_CAPES;NM_AUTOR;NM_PRODUCAO\n"
+        "2024;ENS1;CAP1;ANA;TITULO\n"
+    )
+    (raw_dir / "br-capes-btd-2024@20261101.csv").write_text(csv, "utf-8")
+
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    p = tmp_path / "lake" / "capes" / "teses" / "ano=2024"
+    df = pl.read_parquet(next(p.glob("*.parquet")))
+    assert df["codigo_ies"][0] == "ENS1"
+    assert df["cd_entidade_capes"][0] == "CAP1"  # nenhuma coluna perdida
+
+
+def test_zip_with_multiple_members_writes_all(tmp_path: Path) -> None:
+    """Cada membro do ZIP é uma origem própria (mesmo sha256 do ZIP)."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    zpath = raw_dir / "br-capes-btd-2018-2019@20261101.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("br-capes-btd-2018.csv", "AN_BASE;NM_AUTOR\n2018;A\n2018;B\n")
+        zf.writestr("br-capes-btd-2019.csv", "AN_BASE;NM_AUTOR\n2019;C\n")
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors
+    ds = tmp_path / "lake" / "capes" / "teses"
+    assert _partitions(ds) == {"ano=2018": 2, "ano=2019": 1}
+
+
+def test_latin1_csv_decodes_without_replacement_char(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "br-capes-btd-2020@20261101.csv").write_bytes(
+        "AN_BASE;NM_AUTOR\n2020;JOÃO AÇÃO\n".encode("latin-1")
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors
+    p = tmp_path / "lake" / "capes" / "teses" / "ano=2020"
+    df = pl.read_parquet(next(p.glob("*.parquet")))
+    assert df["autor"][0] == "JOÃO AÇÃO"
+
+
+def test_reconversion_is_idempotent(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "br-capes-btd-2019-2020@20261101.csv").write_text(
+        "AN_BASE;NM_AUTOR\n2019;A\n2020;B\n", "utf-8"
+    )
+    converter.convert(raw_dir.parent, tmp_path / "lake")
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert res.converted == 0
+    assert res.skipped == 2

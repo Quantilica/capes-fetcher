@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
-import io
+import codecs
+import logging
+import os
 import re
+import tempfile
 import unicodedata
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
+from typing import IO
 
 try:
     import polars as pl
     from quantilica.analytics.lake import ConvertResult, LakeWriter
     from quantilica.core.lake import (
         DatasetDescriptor,
+        composite_file_key,
         partition_types_for,
         select_current,
     )
@@ -23,6 +29,8 @@ except ImportError as exc:
         "uv add 'capes-fetcher[analysis]' "
         "--index https://index.quantilica.com/simple/"
     ) from exc
+
+logger = logging.getLogger(__name__)
 
 SOURCE_ID = "capes"
 DATASETS = ["teses", "programas", "cursos"]
@@ -96,37 +104,156 @@ def _norm_col(col_name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
 
+def _canonical_rename(
+    columns: Sequence[str], mapping: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Mapa ``coluna original -> nome canonico``, sem colisoes.
+
+    Quando mais de uma coluna do arquivo aponta para o mesmo nome canonico (por
+    exemplo ``CD_ENTIDADE_ENSINO`` e ``CD_ENTIDADE_CAPES`` -> ``codigo_ies``), so a
+    primeira na ordem do dicionario de sinonimos (deterministica, independe da
+    ordem das colunas do arquivo) recebe o nome canonico; as demais mantem o nome
+    normalizado, sem perda de dados e sem ``DuplicateError`` do Polars.
+    """
+    normed = {c: _norm_col(c) for c in columns}
+    if not mapping:
+        return normed
+    order = {syn: i for i, syn in enumerate(mapping)}
+    by_canon: dict[str, list[str]] = {}
+    for col, norm in normed.items():
+        if norm in mapping:
+            by_canon.setdefault(mapping[norm], []).append(col)
+    result = dict(normed)
+    taken = set(normed.values())
+    for canon, cols in by_canon.items():
+        cols.sort(key=lambda c: order[normed[c]])
+        winner, losers = cols[0], cols[1:]
+        # O nome canonico ja presente no arquivo (ex.: ``autor``) continua valendo.
+        if canon in taken and normed[winner] != canon:
+            losers = cols
+            winner = None
+        if winner is not None:
+            result[winner] = canon
+        if losers:
+            logger.warning(
+                "CAPES: colunas %s apontam para o mesmo campo canonico %r; "
+                "apenas %s foi renomeada",
+                losers + ([winner] if winner else []),
+                canon,
+                winner or "nenhuma",
+            )
+    return result
+
+
 def _canonicalize_columns(
     df: pl.DataFrame, mapping: dict[str, str] | None = None
 ) -> pl.DataFrame:
     """Normalize column names and map known synonyms to canonical schema."""
-    renamed = {c: _norm_col(c) for c in df.columns}
-    df = df.rename(renamed)
-    if mapping:
-        canon_map = {c: mapping[c] for c in df.columns if c in mapping}
-        if canon_map:
-            df = df.rename(canon_map)
-    return df
+    return df.rename(_canonical_rename(df.columns, mapping))
 
 
-def _read_csv_members(path: Path) -> list[tuple[str, bytes]]:
-    """Return list of (member_name, bytes) for CSV in file (or ZIP archive)."""
+# --- Leitura em streaming ---------------------------------------------------
+_CHUNK = 1 << 20
+_UTF8 = "utf-8-sig"
+_LEGACY = "cp1252"
+
+
+def _c1_passthrough(exc: UnicodeDecodeError) -> tuple[str, int]:
+    """Bytes indefinidos no cp1252 viram o controle C1 de mesmo codigo (sem perda
+    e sem U+FFFD). Outros erros continuam erros."""
+    if exc.encoding.lower().replace("-", "").replace("_", "") != "cp1252":
+        raise exc
+    return "".join(chr(b) for b in exc.object[exc.start : exc.end]), exc.end
+
+
+codecs.register_error("quantilica_c1", _c1_passthrough)
+
+
+def _transcode(
+    opener: Callable[[], AbstractContextManager[IO[bytes]]], dest: Path, encoding: str
+) -> None:
+    decoder = codecs.getincrementaldecoder(encoding)(errors="quantilica_c1")
+    with opener() as source, open(dest, "w", encoding="utf-8", newline="") as out:
+        while chunk := source.read(_CHUNK):
+            out.write(decoder.decode(chunk))
+        out.write(decoder.decode(b"", final=True))
+
+
+def _transcode_to_utf8(
+    opener: Callable[[], AbstractContextManager[IO[bytes]]], dest: Path
+) -> str:
+    """Copia o arquivo para ``dest`` em UTF-8, em blocos (memoria constante).
+
+    Encoding explicito: UTF-8 (com ou sem BOM) estrito; se o arquivo nao for UTF-8
+    valido, cp1252 (Windows-1252). Nunca ``errors="replace"``. Devolve o encoding
+    usado.
+    """
     try:
-        with open(path, "rb") as f:
-            header = f.read(4)
-        if header.startswith(b"PK"):
-            results = []
-            with zipfile.ZipFile(path) as zf:
-                for name in zf.namelist():
-                    if name.lower().endswith(".csv"):
-                        results.append((name, zf.read(name)))
-            return results
-    except Exception:
-        pass
+        _transcode(opener, dest, _UTF8)
+        return _UTF8
+    except UnicodeDecodeError:
+        _transcode(opener, dest, _LEGACY)
+        return _LEGACY
 
-    if path.suffix.lower() == ".csv":
-        return [(path.name, path.read_bytes())]
-    return []
+
+def _csv_member_names(path: Path) -> list[str] | None:
+    """Nomes dos CSVs do ZIP; ``None`` quando ``path`` nao e um ZIP."""
+    with open(path, "rb") as f:
+        if not f.read(4).startswith(b"PK"):
+            return None
+    with zipfile.ZipFile(path) as zf:
+        return [
+            i.filename
+            for i in zf.infolist()
+            if not i.is_dir() and i.filename.lower().endswith(".csv")
+        ]
+
+
+@contextmanager
+def _member_as_utf8(path: Path, name: str | None) -> Iterator[Path]:
+    """CSV de um membro (ou do proprio arquivo) em UTF-8 num diretorio temporario.
+
+    ``QUANTILICA_LAKE_SCRATCH`` move o temporario para outro disco.
+    """
+
+    @contextmanager
+    def opener() -> Iterator[IO[bytes]]:
+        if name is None:
+            with open(path, "rb") as fh:
+                yield fh
+        else:
+            with zipfile.ZipFile(path) as zf, zf.open(name) as fh:
+                yield fh
+
+    with tempfile.TemporaryDirectory(
+        dir=os.environ.get("QUANTILICA_LAKE_SCRATCH") or None
+    ) as tmp:
+        dest = Path(tmp) / "membro.csv"
+        _transcode_to_utf8(opener, dest)
+        yield dest
+
+
+def _detect_separator(csv_path: Path) -> str:
+    """``;`` se o cabecalho (primeira linha) o contem, senao ``,``."""
+    with open(csv_path, encoding="utf-8", newline="") as fh:
+        header = fh.readline()
+    return ";" if ";" in header else ","
+
+
+_YEAR_TOKEN = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
+_ANO_MIN, _ANO_MAX = 1900, 2100
+
+
+def _declared_year(*names: str) -> int | None:
+    """Ano unico declarado no nome do arquivo/membro; ``None`` se nao houver ou se
+    houver mais de um (faixa ``2024-2025`` e ambigua e nao vira partição)."""
+    for name in names:
+        years = {int(y) for y in _YEAR_TOKEN.findall(name.replace("\\", "/"))}
+        if len(years) == 1:
+            return years.pop()
+        if len(years) > 1:
+            return None
+    return None
 
 
 def _detect_dataset_type(filename: str) -> str | None:
@@ -186,70 +313,115 @@ class CapesLakeConverter:
         active_files = select_current(all_raw_files)
 
         for raw_file in active_files:
-            members = _read_csv_members(raw_file)
-            if not members:
+            try:
+                names = _csv_member_names(raw_file)
+            except (OSError, zipfile.BadZipFile) as exc:
+                res.errors.append(f"CAPES {raw_file.name}: ZIP ilegivel: {exc}")
                 continue
+            if names is None:  # CSV solto, sem ZIP
+                if raw_file.suffix.lower() != ".csv":
+                    continue
+                members: list[str | None] = [None]
+            else:
+                members = list(names)
 
-            for name, data_bytes in members:
-                ds_type = _detect_dataset_type(name) or _detect_dataset_type(
+            for name in members:
+                label = name or raw_file.name
+                ds_type = _detect_dataset_type(label) or _detect_dataset_type(
                     raw_file.name
                 )
                 if not ds_type or ds_type not in writers:
                     continue
-
-                writer = writers[ds_type]
+                # Cada membro e uma origem propria no lake (chave composta
+                # zip+membro): o sha256 do ZIP e o mesmo para todos os membros.
+                key = composite_file_key(raw_file, name).lower()
                 try:
-                    # Try UTF-8 with BOM first, then UTF-8, then fallback to latin-1
-                    try:
-                        text = data_bytes.decode("utf-8-sig")
-                    except UnicodeDecodeError:
-                        text = data_bytes.decode("latin-1", errors="replace")
-
-                    # Try semicolon separator, fallback to comma
-                    sep = ";" if ";" in text[:2000] else ","
-
-                    df = pl.read_csv(
-                        io.StringIO(text),
-                        separator=sep,
-                        infer_schema_length=5000,
-                    )
-                    if df.height == 0:
-                        continue
-
-                    if ds_type == "teses":
-                        df = _canonicalize_columns(df, TESES_SYNONYMS)
-                    else:
-                        df = _canonicalize_columns(df)
-
-                    # Determine year partition
-                    if "ano_base" in df.columns:
-                        try:
-                            ano = int(df["ano_base"].drop_nulls()[0])
-                        except Exception:
-                            m = re.search(r"(\d{4})", name) or re.search(
-                                r"(\d{4})", raw_file.name
-                            )
-                            ano = int(m.group(1)) if m else 2024
-                    else:
-                        m = re.search(r"(\d{4})", name) or re.search(
-                            r"(\d{4})", raw_file.name
+                    with _member_as_utf8(raw_file, name) as csv_path:
+                        self._convert_member(
+                            writers[ds_type],
+                            ds_type,
+                            raw_file,
+                            key,
+                            csv_path,
+                            label,
+                            res,
                         )
-                        ano = int(m.group(1)) if m else 2024
-
-                    df = df.with_columns(pl.lit(ano).cast(pl.Int32).alias("ano"))
-
-                    writer.write_polars(
-                        df,
-                        src=raw_file,
-                        partitions={"ano": ano},
-                    )
-                    res.converted += 1
                 except Exception as exc:
                     res.errors.append(
-                        f"Erro ao converter {name} em {raw_file.name}: {exc}"
+                        f"Erro ao converter {label} em {raw_file.name}: {exc}"
                     )
 
         return res
+
+    def _convert_member(
+        self,
+        writer: LakeWriter,
+        ds_type: str,
+        raw_file: Path,
+        key: str,
+        csv_path: Path,
+        label: str,
+        res: ConvertResult,
+    ) -> None:
+        """Escreve um membro, uma particao ``ano`` por vez (lazy, streaming)."""
+        # Tudo como texto (convencao do lake): o esquema nao depende de quantas
+        # linhas a inferencia viu e codigos nao perdem zeros a esquerda.
+        lf = pl.scan_csv(
+            csv_path,
+            separator=_detect_separator(csv_path),
+            infer_schema=False,
+            encoding="utf8",
+        )
+        columns = lf.collect_schema().names()
+        rename = _canonical_rename(
+            columns, TESES_SYNONYMS if ds_type == "teses" else None
+        )
+        lf = lf.rename(rename)
+        if lf.head(1).collect().height == 0:
+            return
+
+        if "ano_base" in rename.values():
+            # Ano-base por linha. Linha sem ano valido NAO ganha ano inventado:
+            # vai para a particao de quarentena (ano nulo).
+            ano = (
+                pl.col("ano_base")
+                .str.extract(r"(?:^|\D)(\d{4})(?:\D|$)", 1)
+                .cast(pl.Int32, strict=False)
+            )
+            ano = pl.when(ano.is_between(_ANO_MIN, _ANO_MAX)).then(ano)
+        else:
+            declared = _declared_year(label, raw_file.name.split("@", 1)[0])
+            if declared is None:
+                raise ValueError(
+                    "sem coluna ano_base e sem ano unico no nome do arquivo: "
+                    "particao por ano indeterminada"
+                )
+            ano = pl.lit(declared, dtype=pl.Int32)
+        lf = lf.with_columns(ano.cast(pl.Int32).alias("ano"))
+
+        anos = lf.select("ano").unique().collect()["ano"].to_list()
+        for year in sorted(anos, key=lambda y: (y is None, y)):
+            part = lf.filter(
+                pl.col("ano").is_null() if year is None else pl.col("ano") == year
+            )
+            if year is None:
+                n = part.select(pl.len()).collect().item()
+                logger.warning(
+                    "CAPES %s: %d linha(s) sem ano valido na particao de "
+                    "quarentena ano=__HIVE_DEFAULT_PARTITION__",
+                    label,
+                    n,
+                )
+            written = writer.write_polars(
+                part,
+                src=raw_file,
+                partitions={"ano": year},
+                file_key_name=key,
+            )
+            if written.status == "skipped":
+                res.skipped += 1
+            else:
+                res.converted += 1
 
 
 converter = CapesLakeConverter()

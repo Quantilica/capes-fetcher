@@ -1,12 +1,48 @@
-"""Tests for capes-fetcher Typer plugin."""
+"""Tests for capes-fetcher Typer plugin (offline por padrão)."""
 
+from typing import Any
+
+import pytest
 from typer.testing import CliRunner
 
+from capes_fetcher import catalog
 from capes_fetcher.plugin import app
 
 
-def test_cli_list() -> None:
-    """Test quantilica capes list."""
+@pytest.fixture
+def offline_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Catálogo CKAN falso: nenhum teste padrão toca a rede."""
+
+    def fake_group_entries(group: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": f"{group}_2023",
+                "base_id": group,
+                "name": f"{group} 2023",
+                "url": f"https://example.invalid/{group}_2023.csv",
+                "ext": "csv",
+                "group": group,
+                "year": 2023,
+                "slug": None,
+                "remote_size": 1,
+                "remote_modified": None,
+            }
+        ]
+
+    monkeypatch.setattr(catalog, "_group_entries", fake_group_entries)
+
+
+def test_cli_list(offline_catalog: None) -> None:
+    """Test quantilica capes list (catálogo mockado, sem rede)."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["list"])
+    assert result.exit_code == 0
+    assert "teses" in result.output
+
+
+@pytest.mark.network
+def test_cli_list_live() -> None:
+    """Contra o CKAN real da CAPES; só roda com ``pytest -m network``."""
     runner = CliRunner()
     result = runner.invoke(app, ["list"])
     assert result.exit_code == 0
