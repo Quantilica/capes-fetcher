@@ -37,9 +37,7 @@ FAKE_RESOURCES = {
 def fake_ckan(monkeypatch: pytest.MonkeyPatch) -> None:
     """Substitui a descoberta CKAN por um pacote fixo e limpa o cache."""
     monkeypatch.setattr(catalog, "_CACHE", {})
-    monkeypatch.setattr(
-        catalog, "TESES_PACKAGES", ["pkg-a", "pkg-b"], raising=False
-    )
+    monkeypatch.setattr(catalog, "TESES_PACKAGES", ["pkg-a", "pkg-b"], raising=False)
     monkeypatch.setattr(catalog, "PROGRAMAS_PACKAGES", ["pkg-a"], raising=False)
     monkeypatch.setattr(catalog, "CURSOS_PACKAGES", ["pkg-b"], raising=False)
     monkeypatch.setattr(
