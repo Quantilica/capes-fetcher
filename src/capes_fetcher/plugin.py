@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from pathlib import Path
 from typing import Any
 
+import typer
 from quantilica.cli.sdk import FetcherApp, make_resolve_groups
 from quantilica.core.sync import FreshnessPolicy
 
-from .catalog import GROUP_ALIASES, GROUPS, list_datasets
+from .catalog import GROUP_ALIASES, GROUPS, catalog_rows, list_datasets
 from .storage import DataRepository
 
-# O SDK espera ``alias -> lista de grupos``; passar a string crua faria
-# ``list("teses")`` virar ['t', 'e', 's', ...] ("Grupo desconhecido: 't'").
-ALIASES: dict[str, list[str]] = {
-    alias: [canon] for alias, canon in GROUP_ALIASES.items()
-}
+# O SDK espera ``alias -> lista de grupos`` (string crua viraria ``list("x")``).
+ALIASES: dict[str, list[str]] = GROUP_ALIASES
 resolve_groups = make_resolve_groups(GROUPS, ALIASES)
 
 
@@ -57,6 +56,51 @@ def convert(
     return lake.converter.convert(input_dir, lake_dir, datasets=dataset, force=force)
 
 
+def catalogo(
+    grupo: str | None = typer.Argument(None, help="Grupo, alias ou macro-alias"),
+    tier: str | None = typer.Option(None, help="r1 (baixa hoje) ou listed"),
+    as_json: bool = typer.Option(False, "--json", help="Saída em JSON"),
+) -> None:
+    """Mostra o catálogo completo de pacotes (R1 e listados, sem rede)."""
+    rows = catalog_rows(grupo, tier)
+    if as_json:
+        typer.echo(json.dumps(rows, ensure_ascii=False, indent=2))
+        return
+    for row in rows:
+        typer.echo(
+            f"{row['group']:<21} {row['tier']:<6} "
+            f"{row['era_start']}-{row['era_end']} csv={row['n_csv']:<3} {row['slug']}"
+        )
+    n_r1 = sum(1 for r in rows if r["tier"] == "r1")
+    typer.echo(f"\n{len(rows)} pacote(s): {n_r1} R1, {len(rows) - n_r1} listados.")
+
+
+def discover_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Saída em JSON"),
+    fail_on_change: bool = typer.Option(
+        False, "--fail-on-change", help="Sai com código 1 se houver novidade"
+    ),
+) -> None:
+    """Detecta pacotes novos ou removidos no CKAN da CAPES (servidor lento)."""
+    from .discover import discover
+
+    report = discover()
+    if as_json:
+        typer.echo(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        typer.echo(f"{report.known} pacote(s) do catálogo encontrados no CKAN.")
+        for pkg in report.new_packages:
+            typer.echo(f"NOVO     {pkg['slug']}")
+        for slug in report.removed_packages:
+            typer.echo(f"REMOVIDO NA FONTE {slug} (bruto mantido)")
+        if not report.has_changes:
+            typer.echo("Sem novidades em relação ao catálogo.")
+    if fail_on_change and report.has_changes:
+        raise typer.Exit(1)
+
+
+fetcher.attach_command(catalogo, name="catalogo")
+fetcher.attach_command(discover_cmd, name="discover")
 fetcher.command_convert(convert)
 fetcher.command_pipeline(convert)
 

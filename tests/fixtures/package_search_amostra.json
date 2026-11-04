@@ -1,0 +1,127 @@
+{
+ "packages": [
+  {
+   "name": "2021-a-2024-cursos-da-pos-graduacao-stricto-sensu-no-brasil",
+   "title": "[2021 a 2024] Cursos da Pós-Graduação Stricto Sensu no Brasil",
+   "groups": [
+    {
+     "name": "cursos-da-pos-graduacao-stricto-sensu-do-brasil"
+    },
+    {
+     "name": "educacao"
+    },
+    {
+     "name": "pesquisa-e-desenvolvimento"
+    }
+   ],
+   "resources": [
+    {
+     "name": "BR-CAPES-COLSUCUP-CURSO-2021-2025-03-31",
+     "format": "CSV",
+     "url": "https://dadosabertos.capes.gov.br/dataset/3a1264d8-b17c-4e6f-9282-601d04049e7b/resource/3b8773e7-9984-4152-80a7-02561a2855e7/download/br-capes-colsucup-curso-2021-2025-03-31.csv",
+     "size": 2426400
+    },
+    {
+     "name": "BR-CAPES-COLSUCUP-CURSO-2021-2025-03-31",
+     "format": "XLSX",
+     "url": "https://dadosabertos.capes.gov.br/dataset/3a1264d8-b17c-4e6f-9282-601d04049e7b/resource/fa88dfc3-e823-412a-ac3a-ffefb8705559/download/br-capes-colsucup-curso-2021-2025-03-31.xlsx",
+     "size": 1021622
+    },
+    {
+     "name": "BR-CAPES-COLSUCUP-CURSO-2022-2025-03-31",
+     "format": "CSV",
+     "url": "https://dadosabertos.capes.gov.br/dataset/3a1264d8-b17c-4e6f-9282-601d04049e7b/resource/5a72aff9-e92d-4918-89e8-51609b461187/download/br-capes-colsucup-curso-2022-2025-03-31.csv",
+     "size": 2382487
+    },
+    {
+     "name": "BR-CAPES-COLSUCUP-CURSO-2022-2025-03-31",
+     "format": "XLSX",
+     "url": "https://dadosabertos.capes.gov.br/dataset/3a1264d8-b17c-4e6f-9282-601d04049e7b/resource/61ea1657-0328-4214-bfdb-d8d976f89614/download/br-capes-colsucup-curso-2022-2025-03-31.xlsx",
+     "size": 1003864
+    }
+   ]
+  },
+  {
+   "name": "2017-a-2020-servidores-da-capes",
+   "title": "[2017 a 2020] Servidores da Capes",
+   "groups": [
+    {
+     "name": "educacao"
+    },
+    {
+     "name": "pesquisa-e-desenvolvimento"
+    },
+    {
+     "name": "servidores-da-capes"
+    }
+   ],
+   "resources": [
+    {
+     "name": "BR-CAPES-SERVIDORES-2017A2020-2021-05-27.csv",
+     "format": "CSV",
+     "url": "https://dadosabertos.capes.gov.br/dataset/6e98b2df-441d-4cfc-8aad-426ef47c648e/resource/eb8d8baf-a29a-4ae7-84b2-2b3a5bd5c75d/download/br-capes-servidores-2017a2020-2021-05-27.csv",
+     "size": null
+    },
+    {
+     "name": "BR-CAPES-SERVIDORES-2017A2020-2021-05-27.xlsx",
+     "format": "XLSX",
+     "url": "https://dadosabertos.capes.gov.br/dataset/6e98b2df-441d-4cfc-8aad-426ef47c648e/resource/6542854b-f4a7-42da-b528-27146b6c3ad3/download/br-capes-servidores-2017a2020-2021-05-27.xlsx",
+     "size": null
+    },
+    {
+     "name": "Metadados Servidores Capes 2017 a 2020",
+     "format": "PDF",
+     "url": "https://dadosabertos.capes.gov.br/dataset/6e98b2df-441d-4cfc-8aad-426ef47c648e/resource/41a1e05a-4a76-44b1-8ee5-e6de8110ec87/download/metadados_servidores_capes_2017_2020.pdf",
+     "size": null
+    },
+    {
+     "name": " Web sobre os metadados Servidores Capes 2017 a 2020",
+     "format": "HTML",
+     "url": "https://metadados.capes.gov.br/index.php/catalog/216",
+     "size": null
+    }
+   ]
+  },
+  {
+   "name": "1987-a-2012-catalogo-de-teses-e-dissertacoes-brasil",
+   "title": "[1987 a 2012] Catálogo de Teses e Dissertações - Brasil",
+   "groups": [
+    {
+     "name": "catalogo-de-teses-e-dissertacoes-brasil"
+    },
+    {
+     "name": "educacao"
+    },
+    {
+     "name": "pesquisa-e-desenvolvimento"
+    }
+   ],
+   "resources": [
+    {
+     "name": "CAPES-BTD-1987-2019-11-01",
+     "format": "CSV",
+     "url": "https://dadosabertos.capes.gov.br/dataset/b59bd607-7422-4b37-bedc-0e6c1b96bee2/resource/d88871ae-6e54-490c-96bb-9740e250d3f2/download/dados_1987.csv",
+     "size": null
+    },
+    {
+     "name": "CAPES-BTD-1987-2019-11-01",
+     "format": "XLSX",
+     "url": "https://dadosabertos.capes.gov.br/dataset/b59bd607-7422-4b37-bedc-0e6c1b96bee2/resource/2b014b26-65ba-4f4c-b091-471c50436c07/download/dados_1987.xlsx",
+     "size": null
+    },
+    {
+     "name": "CAPES-BTD-1988-2019-11-01",
+     "format": "CSV",
+     "url": "https://dadosabertos.capes.gov.br/dataset/b59bd607-7422-4b37-bedc-0e6c1b96bee2/resource/c93c429c-3fc5-4f2e-99fc-8a29c14c1f97/download/dados_1988.csv",
+     "size": null
+    },
+    {
+     "name": "CAPES-BTD-1988-2019-11-01",
+     "format": "XLSX",
+     "url": "https://dadosabertos.capes.gov.br/dataset/b59bd607-7422-4b37-bedc-0e6c1b96bee2/resource/e1c4e7f8-3031-4aea-b22d-bf41ebebd892/download/dados_1988.xlsx",
+     "size": null
+    }
+   ]
+  }
+ ]
+}

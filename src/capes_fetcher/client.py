@@ -36,6 +36,18 @@ class CapesClient:
         """Fetch package details from CAPES CKAN."""
         return self.ckan.package_show(package_id)
 
+    def package_names(self) -> list[str]:
+        """Lista os nomes de todos os pacotes (``package_list``).
+
+        O servidor da CAPES é lento (mais de 2 minutos nesta chamada em
+        2026-11-03); o timeout do cliente é de 300 s.
+        """
+        response = self.client.get(f"{self.base_url}/api/3/action/package_list")
+        payload = response.json()
+        if not payload.get("success"):
+            raise RuntimeError(f"package_list falhou: {payload.get('error')}")
+        return [str(name) for name in payload["result"]]
+
     def search_packages(
         self, q: str | None = None, rows: int = 1000
     ) -> list[dict[str, Any]]:
