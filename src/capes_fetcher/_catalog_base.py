@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
+
+Tier = Literal["r1", "listed"]
 
 
 @dataclass(frozen=True)
@@ -86,3 +88,39 @@ def annual_datasets(
         )
         for y in range(start_year, end + 1)
     ]
+
+
+@dataclass(frozen=True)
+class CapesPackage:
+    """Descritor estático de um pacote do CKAN da CAPES.
+
+    Cada tema do portal é fatiado em 2 a 6 pacotes por era; ``tema`` é o grupo
+    CKAN específico do pacote (os 26 temas do portal).
+
+    Attributes:
+        slug: Nome do pacote no CKAN.
+        group: Grupo (domínio) canônico do catálogo.
+        tema: Grupo CKAN específico (tema) do pacote.
+        title: Título do pacote, sem o prefixo de era.
+        era_start: Primeiro ano coberto pelo pacote.
+        era_end: Último ano coberto pelo pacote.
+        tier: ``r1`` (baixa hoje) ou ``listed`` (listado; download em release futura).
+        n_csv: Recursos CSV no snapshot de 2026-11-03.
+        n_xlsx: Recursos XLSX (duplicam os CSV; nunca baixados).
+        note: Observação.
+    """
+
+    slug: str
+    group: str
+    tema: str
+    title: str
+    era_start: int
+    era_end: int
+    tier: Tier
+    n_csv: int = 0
+    n_xlsx: int = 0
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Converte o descritor em dict."""
+        return asdict(self)

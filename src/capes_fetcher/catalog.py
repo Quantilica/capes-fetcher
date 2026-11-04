@@ -4,6 +4,17 @@ Os pacotes do CKAN da CAPES não têm um recurso por ano: cada pacote cobre um
 período (ex.: 2021–2024) e publica um CSV por ano dentro dele. O catálogo é
 portanto **descoberto** a partir de ``package_show`` — essa é a única forma de
 conhecer a URL real do recurso e o ano a que ele se refere.
+
+O catálogo é em duas camadas, com um módulo ``catalog_<dominio>.py`` por grupo
+(``CATALOG`` traz os 89 pacotes do CKAN, fatias por era dos 26 temas do portal):
+
+- ``tier="r1"``: baixa hoje (teses, programas e cursos); é o que
+  :func:`list_datasets` expande;
+- ``tier="listed"``: catalogado, com download em release futura; visível em
+  :func:`catalog_rows` e no comando ``catalogo``.
+
+O catálogo web de teses (``catalogodeteses.capes.gov.br``) só aceita POST com
+20 registros por página e não serve para coleta em massa: fica fora.
 """
 
 from __future__ import annotations
@@ -12,14 +23,52 @@ import re
 import unicodedata
 from typing import Any
 
+from . import (
+    catalog_bolsas,
+    catalog_cursos,
+    catalog_fomento,
+    catalog_formacao_professores,
+    catalog_gestao,
+    catalog_periodicos,
+    catalog_pessoas,
+    catalog_producao,
+    catalog_programas,
+    catalog_projetos,
+    catalog_teses,
+)
+from ._catalog_base import CapesPackage
 from .client import CapesClient
 from .constants import CURSOS_PACKAGES, PROGRAMAS_PACKAGES, TESES_PACKAGES
 
 __all__ = [
     "GROUPS",
     "GROUP_ALIASES",
+    "MACRO_ALIASES",
+    "CATALOG",
+    "CapesPackage",
+    "catalog_rows",
+    "expand_group",
     "list_datasets",
 ]
+
+_MODULES = [
+    catalog_teses,
+    catalog_programas,
+    catalog_cursos,
+    catalog_pessoas,
+    catalog_producao,
+    catalog_projetos,
+    catalog_bolsas,
+    catalog_formacao_professores,
+    catalog_fomento,
+    catalog_periodicos,
+    catalog_gestao,
+]
+
+# slug do pacote -> descritor, de todos os pacotes catalogados (R1 e listados).
+CATALOG: dict[str, CapesPackage] = {
+    pkg.slug: pkg for mod in _MODULES for pkg in mod.PACKAGES
+}
 
 _CACHE: dict[str, list[dict[str, Any]]] = {}
 
@@ -98,6 +147,8 @@ def _group_entries(group: str) -> list[dict[str, Any]]:
         entries = _entries_for_group("programas", "programas", PROGRAMAS_PACKAGES)
     elif group == "cursos":
         entries = _entries_for_group("cursos", "cursos", CURSOS_PACKAGES)
+    elif group in GROUPS:
+        entries = []  # só pacotes listados (download em release futura)
     else:
         raise ValueError(f"Grupo desconhecido: {group!r}")
     _CACHE[group] = entries
@@ -105,39 +156,71 @@ def _group_entries(group: str) -> list[dict[str, Any]]:
 
 
 GROUPS: dict[str, dict[str, Any]] = {
-    "teses": {
-        "name": "Catálogo de Teses e Dissertações",
-        "entries": [],
-    },
-    "programas": {
-        "name": "Programas de Pós-Graduação Stricto Sensu",
-        "entries": [],
-    },
-    "cursos": {
-        "name": "Cursos de Pós-Graduação Stricto Sensu",
-        "entries": [],
-    },
+    mod.GROUP: {"name": mod.NAME, "entries": []} for mod in _MODULES
 }
 
-GROUP_ALIASES: dict[str, str] = {
-    "padrao": "teses",
-    "principal": "teses",
-    "teses_dissertacoes": "teses",
-    "teses-dissertacoes": "teses",
-    "pos_graduacao": "programas",
-    "pos-graduacao": "programas",
+# Macro-aliases: um apelido que engloba vários grupos canônicos.
+MACRO_ALIASES: dict[str, list[str]] = {
+    "pos-graduacao": [
+        "teses",
+        "programas",
+        "cursos",
+        "pessoas",
+        "producao",
+        "projetos",
+    ],
+    "bolsas-e-fomento": ["bolsas", "formacao-professores", "fomento"],
+    "institucional": ["periodicos", "gestao"],
 }
+
+GROUP_ALIASES: dict[str, list[str]] = {
+    **MACRO_ALIASES,
+    "padrao": ["teses"],
+    "principal": ["teses"],
+    "teses_dissertacoes": ["teses"],
+    "teses-dissertacoes": ["teses"],
+    "pos_graduacao": ["programas"],
+    "docentes": ["pessoas"],
+    "discentes": ["pessoas"],
+    "producao-intelectual": ["producao"],
+    "capes": ["gestao"],
+}
+
+
+def expand_group(key: str) -> list[str]:
+    """Expande um grupo, alias ou macro-alias em ids canônicos de grupo.
+
+    Raises:
+        ValueError: Se ``key`` não for grupo nem alias.
+    """
+    if key in GROUPS:
+        return [key]
+    targets = GROUP_ALIASES.get(key)
+    if targets is None:
+        raise ValueError(f"Grupo desconhecido: {key!r}")
+    return [t for t in targets if t in GROUPS]
 
 
 def list_datasets(group: str | None = None) -> list[dict[str, Any]]:
-    """Lista recursos reais dos pacotes CKAN, por grupo."""
-    if group is None:
-        entries: list[dict[str, Any]] = []
-        for group_id in GROUPS:
-            entries.extend(_group_entries(group_id))
-        return entries
+    """Lista recursos reais dos pacotes CKAN R1 (teses, programas, cursos).
 
-    canon = GROUP_ALIASES.get(group, group)
-    if canon not in GROUPS:
-        raise ValueError(f"Grupo desconhecido: {group!r}")
-    return list(_group_entries(canon))
+    Só o tier ``r1`` baixa hoje; os demais pacotes aparecem em
+    :func:`catalog_rows`.
+    """
+    groups = list(GROUPS) if group is None else expand_group(group)
+    entries: list[dict[str, Any]] = []
+    for group_id in groups:
+        entries.extend(_group_entries(group_id))
+    return entries
+
+
+def catalog_rows(
+    group: str | None = None, tier: str | None = None
+) -> list[dict[str, Any]]:
+    """Linhas do catálogo estático (um pacote por linha), sem rede."""
+    groups = set(GROUPS if group is None else expand_group(group))
+    return [
+        pkg.to_dict()
+        for pkg in CATALOG.values()
+        if pkg.group in groups and (tier is None or pkg.tier == tier)
+    ]

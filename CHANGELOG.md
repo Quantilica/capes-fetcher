@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não lançado]
 
+### Adicionado
+- Catálogo completo por domínio (`catalog_<dominio>.py`, 11 grupos): os 89 pacotes do CKAN (2026-11-03), fatias por era dos 26 temas do portal, com `tier` (`r1` baixa hoje; `listed` = listado, download em release futura). R1 segue com 10 pacotes (teses 4, programas 3, cursos 3); os 79 restantes ficam listados. XLSX (duplicam os CSV), RDF e TTL nunca são baixados.
+- `MACRO_ALIASES` (`pos-graduacao`, `bolsas-e-fomento`, `institucional`); `GROUP_ALIASES` agora mapeia para listas.
+- `quantilica capes catalogo [grupo] [--tier]` (sem rede) e `quantilica capes discover [--json] [--fail-on-change]` (`capes_fetcher.discover.discover()`): pacotes novos (era nova de um tema) e removidos na fonte; resposta vazia vira erro, nunca "tudo removido".
+- `CapesClient.package_names()` (`package_list`).
+- O catálogo web de teses (`catalogodeteses.capes.gov.br`, POST, 20 por página) segue fora do fetcher: não serve para coleta em massa.
+- Limitação: o servidor é muito lento (`package_list` ~130 s e `package_search` com 100 pacotes ~250 s em 2026-11-03); o `discover` consulta só `package_list`.
+
 ### Corrigido
 - Política de frescor volta a F2 (`HEAD_FALLBACK_GET`): `REMOTE_ONLY` (F3, para fontes sem validadores) causava re-download diário de fontes com Last-Modified/ETag, porque descartava o Last-Modified e o nome do arquivo caía em `@hoje`.
 - Aliases de grupo (`sync padrao` etc.): o `FetcherApp` recebia `alias -> str` e o
