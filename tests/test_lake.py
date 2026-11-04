@@ -287,3 +287,46 @@ def test_reconversion_is_idempotent(tmp_path: Path) -> None:
     res = converter.convert(raw_dir.parent, tmp_path / "lake")
     assert res.converted == 0
     assert res.skipped == 2
+
+
+def test_cp1252_com_bytes_indefinidos_nao_quebra(tmp_path: Path) -> None:
+    """Bytes 0x8d/0x90 (indefinidos no cp1252, 'charmap codec can't decode') viram
+    o controle C1 de mesmo código: sem perda de linha e sem U+FFFD."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    corpo = b"AN_BASE;NM_AUTOR\n1990;JO\xc3O \x8d\n1990;MARIA \x90 A\xc7O\n"
+    (raw_dir / "teses_1990@20261101.csv").write_bytes(corpo)
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    ds = tmp_path / "lake" / "capes" / "teses"
+    assert _partitions(ds) == {"ano=1990": 2}
+    df = pl.read_parquet(next((ds / "ano=1990").glob("*.parquet")))
+    assert df["autor"][0].startswith("JOÃO ")
+    assert not any("�" in v for v in df["autor"])
+
+
+def test_teses_sem_coluna_de_ano_usa_ano_do_nome(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "teses_1992@20261101.csv").write_bytes(
+        b"NM_AUTOR;DS_RESUMO\nJO\xc3O;texto \x8d\n"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    assert _partitions(tmp_path / "lake" / "capes" / "teses") == {"ano=1992": 1}
+
+
+def test_nomes_reais_do_fetcher_programas_e_cursos(tmp_path: Path) -> None:
+    """Nomes locais gerados pelo fetcher: ``<base_id>_<ano>@AAAAMMDD.csv``."""
+    raw_dir = tmp_path / "raw" / "programas"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "programas_2013@20261101.csv").write_bytes(
+        b"AN_BASE_PROGRAMA;NM_PROGRAMA\n2013;COMPUTA\xc7\xc3O\n"
+    )
+    (raw_dir / "cursos_2017@20261101.csv").write_bytes(
+        b"NM_CURSO;CD_CURSO\nDOUTORADO;1\n"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    assert _partitions(tmp_path / "lake" / "capes" / "programas") == {"ano=2013": 1}
+    assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2017": 1}

@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não lançado]
 
 ### Corrigido
+- `lake`: CSV em cp1252 com bytes indefinidos (0x8d, 0x90...) converte em vez de falhar com `'charmap' codec can't decode`; o tratador de erros não reconhecia o encoding que o Python reporta (`charmap`). Os bytes viram o controle C1 de mesmo código, sem perda de linha.
 - Sem o extra `analysis`, o comando `convert` termina com código 1 e a instrução de instalação (`quantilica install capes --extra analysis`), sem traceback.
 
 ## [0.2.0] - 2026-11-04
