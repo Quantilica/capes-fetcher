@@ -5,7 +5,7 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [Não lançado]
+## [0.2.0] - 2026-11-04
 
 ### Adicionado
 - Catálogo completo por domínio (`catalog_<dominio>.py`, 11 grupos): os 89 pacotes do CKAN (2026-11-03), fatias por era dos 26 temas do portal, com `tier` (`r1` baixa hoje; `listed` = listado, download em release futura). R1 segue com 10 pacotes (teses 4, programas 3, cursos 3); os 79 restantes ficam listados. XLSX (duplicam os CSV), RDF e TTL nunca são baixados.
