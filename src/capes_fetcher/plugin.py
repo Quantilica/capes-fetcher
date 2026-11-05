@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import datetime as dt
+import email.utils
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import typer
-from quantilica.cli.sdk import FetcherApp, make_resolve_groups
+from quantilica.cli.sdk import (
+    CheckPlanItem,
+    FetcherApp,
+    default_client,
+    make_resolve_groups,
+)
 from quantilica.cli.ui import get_console
+from quantilica.core.http import HttpClient, HttpStatusError
+from quantilica.core.manifests import manifest_sidecar_path
 from quantilica.core.sync import FreshnessPolicy
 
 from .catalog import GROUP_ALIASES, GROUPS, catalog_rows, list_datasets
@@ -28,11 +37,60 @@ ALIASES: dict[str, list[str]] = GROUP_ALIASES
 resolve_groups = make_resolve_groups(GROUPS, ALIASES)
 
 
+def ckan_modified(entry: dict[str, Any]) -> dt.datetime | None:
+    """``last_modified`` do recurso no CKAN (``remote_modified``), em UTC.
+
+    O CKAN publica ISO 8601 sem fuso (UTC). Valores ausentes ou ilegíveis
+    retornam ``None``.
+    """
+    raw = entry.get("remote_modified")
+    if not raw:
+        return None
+    try:
+        value = dt.datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=dt.UTC)
+    return value.astimezone(dt.UTC)
+
+
+def _ckan_size(entry: dict[str, Any]) -> int | None:
+    """Tamanho em bytes do recurso no CKAN, ou ``None`` se ausente/inválido."""
+    try:
+        size = int(entry.get("remote_size"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return size if size > 0 else None
+
+
 def path_builder(
     output_dir: Path, entry: dict[str, Any], last_modified: dt.date | None
 ) -> Path:
-    """Build local storage path for a dataset entry."""
-    return DataRepository(output_dir).path_for_entry(entry, last_modified=last_modified)
+    """Caminho local de uma entry, carimbado pela data do CKAN.
+
+    A data de ``remote_modified`` (que viaja na entry, inclusive pelo plano
+    JSON) tem precedência sobre ``last_modified`` do HEAD: o caminho é o mesmo
+    no ``check`` e no download, e não vira ``@hoje`` quando o HEAD falha.
+    """
+    ckan = ckan_modified(entry)
+    stamp = ckan.date() if ckan is not None else last_modified
+    return DataRepository(output_dir).path_for_entry(entry, last_modified=stamp)
+
+
+# Servidor da CAPES responde 503 com frequência sob carga: mais tentativas e
+# espera maior entre elas que o padrão do SDK (sobrescrevível pelo ambiente).
+DOWNLOAD_ATTEMPTS = 8
+DOWNLOAD_RETRY_DELAY = 10.0
+
+
+def _build_client() -> HttpClient:
+    client = default_client()
+    if "QUANTILICA_HTTP_ATTEMPTS" not in os.environ:
+        client.attempts = max(client.attempts, DOWNLOAD_ATTEMPTS)
+    if "QUANTILICA_HTTP_RETRY_DELAY" not in os.environ:
+        client.retry_base_delay = max(client.retry_base_delay, DOWNLOAD_RETRY_DELAY)
+    return client
 
 
 fetcher = FetcherApp(
@@ -43,8 +101,116 @@ fetcher = FetcherApp(
     list_datasets=list_datasets,
     path_builder=path_builder,
     default_output=Path("/data/capes"),
+    client=_build_client(),
     freshness_policy=FreshnessPolicy.HEAD_FALLBACK_GET,
 )
+
+
+def _http_date(moment: dt.datetime) -> str:
+    return email.utils.format_datetime(moment, usegmt=True)
+
+
+def _probe_head(url: str) -> Any:
+    """HEAD rápido (poucas tentativas) para recursos sem tamanho no CKAN."""
+    with HttpClient(timeout=30.0, attempts=2, retry_base_delay=1.0) as client:
+        return client.head(url)
+
+
+def _capes_check_entry(entry: dict[str, Any], output_dir: Path) -> CheckPlanItem:
+    """Veredito de frescor a partir dos metadados do CKAN, sem HEAD.
+
+    O ``package_show`` já traz ``size`` e ``last_modified`` de cada recurso
+    (iguais a ``Content-Length`` e ``Last-Modified`` do HEAD). Com os dois, o
+    item sai sem rede. Quando falta o tamanho, um HEAD curto o completa (e o
+    ETag); se o HEAD falhar, o item sai com o carimbo do CKAN, caminho estável
+    e ação ``download``. Sem ``remote_modified`` cai no check genérico do SDK.
+    """
+    modified = ckan_modified(entry)
+    if modified is None:
+        return FetcherApp.check_entry(fetcher, entry, output_dir)
+
+    dataset = str(entry.get("group") or entry.get("id") or "datasets")
+    local = path_builder(output_dir, entry, None)
+    exists = local.exists() or manifest_sidecar_path(local).exists()
+    size = _ckan_size(entry)
+    etag: str | None = None
+    last_modified = _http_date(modified)
+    reason_suffix = ""
+    if size is None:
+        try:
+            head = _probe_head(str(entry["url"]))
+        except HttpStatusError as exc:
+            if exc.status_code == 404:
+                return _item(
+                    entry,
+                    dataset,
+                    local,
+                    exists,
+                    None,
+                    None,
+                    last_modified,
+                    "skip-unavailable",
+                    "remote-404",
+                )
+            reason_suffix = f"metadata-unavailable: {exc}"
+        except Exception as exc:  # noqa: BLE001 - metadata best effort
+            reason_suffix = f"metadata-unavailable: {exc}"
+        else:
+            etag = head.headers.get("ETag")
+            try:
+                size = int(head.headers.get("Content-Length") or 0) or None
+            except ValueError:
+                size = None
+    if reason_suffix:
+        return _item(
+            entry,
+            dataset,
+            local,
+            exists,
+            None,
+            None,
+            last_modified,
+            "download",
+            reason_suffix,
+        )
+    if exists:
+        action, reason = "skip-up-to-date", "ckan-fresh"
+    else:
+        action, reason = "download", "not-present"
+    return _item(
+        entry, dataset, local, exists, etag, size, last_modified, action, reason
+    )
+
+
+def _item(
+    entry: dict[str, Any],
+    dataset: str,
+    local: Path,
+    exists: bool,
+    etag: str | None,
+    size: int | None,
+    last_modified: str | None,
+    action: str,
+    reason: str,
+) -> CheckPlanItem:
+    partition = str(entry["year"]) if entry.get("year") else None
+    return CheckPlanItem(
+        dataset=dataset,
+        id=str(entry.get("id", "unknown")),
+        url=str(entry["url"]),
+        partition=partition,
+        local_path=str(local),
+        remote_etag=etag,
+        remote_last_modified=last_modified,
+        remote_size=size,
+        local_exists=exists,
+        action=action,
+        reason=reason,
+        entry=dict(entry),
+    )
+
+
+fetcher.check_entry = _capes_check_entry  # type: ignore[method-assign]
 
 
 def convert(

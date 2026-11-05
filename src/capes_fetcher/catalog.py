@@ -73,6 +73,9 @@ CATALOG: dict[str, CapesPackage] = {
 _CACHE: dict[str, list[dict[str, Any]]] = {}
 
 _YEAR_RE = re.compile(r"(19|20)\d{2}")
+# Pacotes multianuais (ex.: "...-2013A2016-2020-06-12_2014") trazem o ano do
+# recurso depois do último "_"; o primeiro ano do nome é o início da era.
+_TRAILING_YEAR_RE = re.compile(r"_((?:19|20)\d{2})$")
 _FORMATOS = {"CSV", "ZIP"}
 
 
@@ -85,7 +88,15 @@ def _slugify(value: str) -> str:
 
 
 def _resource_year(name: str, url: str) -> int | None:
-    """Extrai o ano do nome do recurso (fallback: da URL)."""
+    """Extrai o ano do nome do recurso (fallback: da URL).
+
+    Um sufixo ``_AAAA`` no fim do nome ou do arquivo tem precedência sobre o
+    primeiro ano encontrado (que, nos pacotes de várias eras, é o da era).
+    """
+    stem = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+    trailing = _TRAILING_YEAR_RE.search(name) or _TRAILING_YEAR_RE.search(stem)
+    if trailing:
+        return int(trailing.group(1))
     match = _YEAR_RE.search(name) or _YEAR_RE.search(url.rsplit("/", 1)[-1])
     return int(match.group(0)) if match else None
 
@@ -117,8 +128,18 @@ def _entries_for_group(
             name = str(resource.get("name") or resource.get("id") or package_slug)
             year = _resource_year(name, url)
             ident = f"{base_id}_{year}" if year else f"{base_id}_{_slugify(name)}"
+            slug: str | None = None
             if ident in seen:
-                ident = f"{ident}_{_slugify(package_slug)[:12]}"
+                # Mantém o sufixo histórico (pacote) e, se ainda colidir,
+                # acrescenta o id curto do recurso (estável no CKAN).
+                slug = _slugify(package_slug)[:12]
+                if f"{ident}_{slug}" in seen:
+                    slug = f"{slug}_{_slugify(str(resource.get('id') or name))[:8]}"
+                ident = f"{ident}_{slug}"
+                n = 1
+                while ident in seen:  # último recurso: contador
+                    n += 1
+                    ident = f"{ident}_{n}"
             seen.add(ident)
             entries.append(
                 {
@@ -129,7 +150,7 @@ def _entries_for_group(
                     "ext": _resource_ext(url, fmt),
                     "group": group,
                     "year": year,
-                    "slug": None,
+                    "slug": slug,
                     "remote_size": resource.get("size"),
                     "remote_modified": resource.get("last_modified"),
                 }
