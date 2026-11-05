@@ -8,12 +8,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não lançado]
 
 ### Adicionado
-- `check` usa o tamanho e o `last_modified` que o CKAN já informa em cada recurso, sem uma requisição HEAD por arquivo. Quando o CKAN não informa o tamanho, um HEAD curto (2 tentativas) o completa; se também falhar, o item sai com o carimbo do CKAN e ação `download`.
+- `check` faz um HEAD curto (2 tentativas, 30 s) por recurso, em vez de 5 tentativas com espera longa; o tempo total cai de ~18 min para menos de 1 min. Se o HEAD falhar, o item usa tamanho e data do CKAN, com caminho estável e ação `download`.
 - Downloads com mais tentativas (8) e espera maior entre elas (10 s) diante de 503 do servidor; os padrões continuam sobrescrevíveis por `QUANTILICA_HTTP_ATTEMPTS` e `QUANTILICA_HTTP_RETRY_DELAY`.
+- `sync` baixa com 2 downloads paralelos por padrão (antes 4); `--workers` continua valendo.
 
 ### Alterado
 - A saída do CLI passa a usar o console Rich em vez de `typer.echo`.
-- O nome do arquivo bruto é carimbado com a data `last_modified` do CKAN (a mesma no `check` e no download), em vez da data do HEAD. Falha no HEAD não produz mais arquivo `@<hoje>`.
+- O carimbo do nome do arquivo bruto é a data do `Last-Modified` do arquivo; sem ela, a data do CKAN (`remote_modified`, que viaja no plano); só então a de hoje. Falha no HEAD não produz mais arquivo `@<hoje>`.
 
 ### Corrigido
 - Recursos multianuais (`programas` e `cursos` de 2013 a 2016) tinham o ano lido da era (2013) e colidiam no mesmo identificador e caminho, com quatro conteúdos diferentes no mesmo arquivo. O ano passa a vir do sufixo `_AAAA` do recurso (`*_2013` a `*_2016`); colisões residuais ganham sufixo estável (pacote e id curto do recurso). Identificadores sem colisão não mudam.

@@ -33,6 +33,11 @@ def make_entry(**over: Any) -> dict[str, Any]:
     return entry
 
 
+class Head:
+    def __init__(self, **headers: str) -> None:
+        self.headers = headers
+
+
 @pytest.fixture
 def no_network(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     calls: list[str] = []
@@ -45,72 +50,73 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return calls
 
 
-def test_check_com_validadores_do_ckan_nao_faz_head(
-    tmp_path: Path, no_network: list[str]
+def _head_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        plugin,
+        "_probe_head",
+        lambda url: Head(
+            **{
+                "ETag": '"abc"',
+                "Content-Length": "999",
+                "Last-Modified": "Thu, 26 Jan 2023 11:49:55 GMT",
+            }
+        ),
+    )
+
+
+def test_check_com_head_usa_validadores_e_data_do_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _head_ok(monkeypatch)
     item = fetcher.check_entry(make_entry(), tmp_path)
-    assert no_network == []
     assert item.action == "download"
     assert item.reason == "not-present"
-    assert item.remote_size == 1234
-    assert item.remote_etag is None
-    assert item.remote_last_modified == "Thu, 18 Feb 2021 18:06:37 GMT"
-    assert item.local_path.endswith("teses/teses_1990@20210218.csv")
+    assert item.remote_size == 999
+    assert item.remote_etag == '"abc"'
+    assert item.remote_last_modified == "Thu, 26 Jan 2023 11:49:55 GMT"
+    assert item.local_path.endswith("teses/teses_1990@20230126.csv")
 
 
 def test_check_skip_quando_arquivo_local_existe(
-    tmp_path: Path, no_network: list[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _head_ok(monkeypatch)
     entry = make_entry()
-    local = path_builder(tmp_path, entry, None)
+    local = path_builder(tmp_path, entry, dt.date(2023, 1, 26))
     local.parent.mkdir(parents=True)
     local.write_bytes(b"x")
     item = fetcher.check_entry(entry, tmp_path)
     assert item.action == "skip-up-to-date"
     assert item.local_exists is True
-    assert no_network == []
 
 
-def test_check_sem_tamanho_head_falho_mantem_caminho_estavel(
+def test_head_falho_usa_validadores_e_carimbo_do_ckan(
     tmp_path: Path, no_network: list[str]
 ) -> None:
-    item = fetcher.check_entry(make_entry(remote_size=None), tmp_path)
+    item = fetcher.check_entry(make_entry(), tmp_path)
     assert no_network == [URL]
     assert item.action == "download"
     assert item.reason.startswith("metadata-unavailable")
+    assert item.remote_size == 1234
+    assert item.remote_last_modified == "Thu, 18 Feb 2021 18:06:37 GMT"
     assert item.local_path.endswith("@20210218.csv")
     assert dt.date.today().strftime("%Y%m%d") not in item.local_path
 
 
-def test_check_sem_tamanho_completa_com_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class Head:
-        headers = {"ETag": '"abc"', "Content-Length": "999"}
-
-    monkeypatch.setattr(plugin, "_probe_head", lambda url: Head())
-    item = fetcher.check_entry(make_entry(remote_size=None), tmp_path)
-    assert item.remote_size == 999
-    assert item.remote_etag == '"abc"'
-    assert item.local_path.endswith("@20210218.csv")
-
-
-def test_path_builder_prefere_data_do_ckan_ao_head(tmp_path: Path) -> None:
+def test_path_builder_ordem_head_ckan_hoje(tmp_path: Path) -> None:
     entry = make_entry()
-    a = path_builder(tmp_path, entry, dt.date(2030, 1, 1))
-    b = path_builder(tmp_path, entry, None)
-    assert a == b
-    assert a.name == "teses_1990@20210218.csv"
-
-
-def test_path_builder_sem_data_do_ckan_usa_head(tmp_path: Path) -> None:
-    entry = make_entry(remote_modified=None)
-    assert path_builder(tmp_path, entry, dt.date(2022, 5, 6)).name.endswith(
-        "@20220506.csv"
+    assert path_builder(tmp_path, entry, dt.date(2023, 1, 26)).name.endswith(
+        "@20230126.csv"
     )
+    assert path_builder(tmp_path, entry, None).name.endswith("@20210218.csv")
+    bare = make_entry(remote_modified=None)
+    today = dt.date.today().strftime("%Y%m%d")
+    assert path_builder(tmp_path, bare, None).name.endswith(f"@{today}.csv")
 
 
-def test_entry_serializada_restaura_mesmo_caminho(tmp_path: Path) -> None:
+def test_entry_serializada_restaura_mesmo_caminho_com_head_falho(
+    tmp_path: Path, no_network: list[str]
+) -> None:
     item = fetcher.check_entry(make_entry(), tmp_path)
     plan = CheckPlan(
         fetcher="capes",
@@ -120,8 +126,16 @@ def test_entry_serializada_restaura_mesmo_caminho(tmp_path: Path) -> None:
     )
     restored = CheckPlan.from_json(json.dumps(json.loads(plan.to_json())))
     entry = fetcher.entry_from_plan(dict(restored.items[0].entry))
-    # download_entry recalcula com a data do HEAD (diferente): o caminho vale o do check
-    assert str(path_builder(tmp_path, entry, dt.date(2030, 1, 1))) == item.local_path
+    assert str(path_builder(tmp_path, entry, None)) == item.local_path
+
+
+def test_sync_usa_2_workers_por_padrao() -> None:
+    from typer.testing import CliRunner
+
+    from capes_fetcher.plugin import app
+
+    out = CliRunner().invoke(app, ["sync", "--help"], terminal_width=200).output
+    assert "[default: 2]" in out
 
 
 def _fake_package(names: list[str]) -> dict[str, Any]:

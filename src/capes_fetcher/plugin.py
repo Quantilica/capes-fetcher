@@ -67,19 +67,23 @@ def _ckan_size(entry: dict[str, Any]) -> int | None:
 def path_builder(
     output_dir: Path, entry: dict[str, Any], last_modified: dt.date | None
 ) -> Path:
-    """Caminho local de uma entry, carimbado pela data do CKAN.
+    """Caminho local de uma entry.
 
-    A data de ``remote_modified`` (que viaja na entry, inclusive pelo plano
-    JSON) tem precedência sobre ``last_modified`` do HEAD: o caminho é o mesmo
-    no ``check`` e no download, e não vira ``@hoje`` quando o HEAD falha.
+    O carimbo é a data real do arquivo (``Last-Modified`` do HEAD) quando ela
+    é informada; senão, a data do CKAN (``remote_modified``, que viaja na entry
+    e sobrevive ao plano JSON); só em último caso, hoje. Assim o HEAD falho não
+    gera ``@<hoje>``.
     """
-    ckan = ckan_modified(entry)
-    stamp = ckan.date() if ckan is not None else last_modified
+    stamp = last_modified
+    if stamp is None:
+        ckan = ckan_modified(entry)
+        stamp = ckan.date() if ckan is not None else None
     return DataRepository(output_dir).path_for_entry(entry, last_modified=stamp)
 
 
 # Servidor da CAPES responde 503 com frequência sob carga: mais tentativas e
 # espera maior entre elas que o padrão do SDK (sobrescrevível pelo ambiente).
+DEFAULT_WORKERS = 2
 DOWNLOAD_ATTEMPTS = 8
 DOWNLOAD_RETRY_DELAY = 10.0
 
@@ -117,69 +121,84 @@ def _probe_head(url: str) -> Any:
 
 
 def _capes_check_entry(entry: dict[str, Any], output_dir: Path) -> CheckPlanItem:
-    """Veredito de frescor a partir dos metadados do CKAN, sem HEAD.
+    """Veredito de frescor com um HEAD curto por recurso.
 
-    O ``package_show`` já traz ``size`` e ``last_modified`` de cada recurso
-    (iguais a ``Content-Length`` e ``Last-Modified`` do HEAD). Com os dois, o
-    item sai sem rede. Quando falta o tamanho, um HEAD curto o completa (e o
-    ETag); se o HEAD falhar, o item sai com o carimbo do CKAN, caminho estável
-    e ação ``download``. Sem ``remote_modified`` cai no check genérico do SDK.
+    O HEAD (2 tentativas, 30 s) fornece tamanho, ETag e ``Last-Modified``; o
+    carimbo do caminho é a data do ``Last-Modified``, como no download. Se o
+    HEAD falhar, valem tamanho e data do CKAN (``remote_modified``): o caminho
+    continua estável e a ação é ``download``. Sem nenhum dos dois, cai no check
+    genérico do SDK.
     """
-    modified = ckan_modified(entry)
-    if modified is None:
-        return FetcherApp.check_entry(fetcher, entry, output_dir)
-
+    ckan = ckan_modified(entry)
     dataset = str(entry.get("group") or entry.get("id") or "datasets")
-    local = path_builder(output_dir, entry, None)
-    exists = local.exists() or manifest_sidecar_path(local).exists()
-    size = _ckan_size(entry)
-    etag: str | None = None
-    last_modified = _http_date(modified)
-    reason_suffix = ""
-    if size is None:
+    try:
+        head = _probe_head(str(entry["url"]))
+    except HttpStatusError as exc:
+        if exc.status_code == 404:
+            local = path_builder(output_dir, entry, None)
+            return _item(
+                entry,
+                dataset,
+                local,
+                local.exists(),
+                None,
+                None,
+                None,
+                "skip-unavailable",
+                "remote-404",
+            )  # noqa: E501
+        failure = f"metadata-unavailable: {exc}"
+    except Exception as exc:  # noqa: BLE001 - metadata best effort
+        failure = f"metadata-unavailable: {exc}"
+    else:
+        raw_lm = head.headers.get("Last-Modified")
         try:
-            head = _probe_head(str(entry["url"]))
-        except HttpStatusError as exc:
-            if exc.status_code == 404:
-                return _item(
-                    entry,
-                    dataset,
-                    local,
-                    exists,
-                    None,
-                    None,
-                    last_modified,
-                    "skip-unavailable",
-                    "remote-404",
-                )
-            reason_suffix = f"metadata-unavailable: {exc}"
-        except Exception as exc:  # noqa: BLE001 - metadata best effort
-            reason_suffix = f"metadata-unavailable: {exc}"
-        else:
-            etag = head.headers.get("ETag")
-            try:
-                size = int(head.headers.get("Content-Length") or 0) or None
-            except ValueError:
-                size = None
-    if reason_suffix:
+            size = int(head.headers.get("Content-Length") or 0) or None
+        except ValueError:
+            size = None
+        local = path_builder(output_dir, entry, _parse_http_date(raw_lm))
+        exists = local.exists() or manifest_sidecar_path(local).exists()
+        action, reason = (
+            ("skip-up-to-date", "local-fresh")
+            if exists
+            else ("download", "not-present")
+        )
         return _item(
             entry,
             dataset,
             local,
             exists,
-            None,
-            None,
-            last_modified,
-            "download",
-            reason_suffix,
-        )
-    if exists:
-        action, reason = "skip-up-to-date", "ckan-fresh"
-    else:
-        action, reason = "download", "not-present"
+            head.headers.get("ETag"),
+            size,
+            raw_lm,
+            action,
+            reason,
+        )  # noqa: E501
+
+    if ckan is None:
+        return FetcherApp.check_entry(fetcher, entry, output_dir)
+    local = path_builder(output_dir, entry, None)
+    exists = local.exists() or manifest_sidecar_path(local).exists()
     return _item(
-        entry, dataset, local, exists, etag, size, last_modified, action, reason
-    )
+        entry,
+        dataset,
+        local,
+        exists,
+        None,
+        _ckan_size(entry),
+        _http_date(ckan),
+        "download",
+        failure,
+    )  # noqa: E501
+
+
+def _parse_http_date(value: str | None) -> dt.date | None:
+    if not value:
+        return None
+    try:
+        return email.utils.parsedate_to_datetime(value).astimezone(dt.UTC).date()
+    except (TypeError, ValueError):
+        return None
 
 
 def _item(
@@ -211,6 +230,25 @@ def _item(
 
 
 fetcher.check_entry = _capes_check_entry  # type: ignore[method-assign]
+
+
+def _default_sync_workers(workers: int) -> None:
+    """Muda o padrão de ``--workers`` do ``sync`` (o servidor limita a carga)."""
+    for command in fetcher.app.registered_commands:
+        callback = command.callback
+        if command.name == "sync" and callback is not None:
+            if callback.__defaults__ is None:
+                continue
+            code = callback.__code__
+            names = code.co_varnames[: code.co_argcount]
+            defaults = list(callback.__defaults__)
+            offset = len(names) - len(defaults)
+            if "workers" in names:
+                defaults[names.index("workers") - offset] = workers
+                callback.__defaults__ = tuple(defaults)
+
+
+_default_sync_workers(DEFAULT_WORKERS)
 
 
 def convert(
