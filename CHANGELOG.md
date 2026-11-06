@@ -7,6 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não lançado]
 
+## [0.3.0] - 2026-11-05
+
 ### Adicionado
 - `check` faz um HEAD curto (2 tentativas, 30 s) por recurso, em vez de 5 tentativas com espera longa; o tempo total cai de ~18 min para menos de 1 min. Se o HEAD falhar, o item usa tamanho e data do CKAN, com caminho estável e ação `download`.
 - Downloads com mais tentativas (8) e espera maior entre elas (10 s) diante de 503 do servidor; os padrões continuam sobrescrevíveis por `QUANTILICA_HTTP_ATTEMPTS` e `QUANTILICA_HTTP_RETRY_DELAY`.
