@@ -1,0 +1,527 @@
+{
+  "fonte": "capes",
+  "dataset": "teses",
+  "gerado_em": "2026-11-09T13:58:34+00:00",
+  "particoes": [
+    "ano"
+  ],
+  "colunas": [
+    {
+      "nome": "ano_base",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "codigo_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "regiao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "uf",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "sigla_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nome_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nome_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "grandeareacodigo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "grandeareadescricao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "areaconhecimentocodigo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "area_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "area_avaliacao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documento_discente",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "autor",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "titulo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "grau_academico",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "data_defesa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "palavras_chave",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "volume",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "numeropaginas",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "bibliotecadepositaria",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "idioma",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "resumo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "linhapesquisa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "urltextocompleto",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentoorientador_1",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "orientador",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentoorientador_2",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "orientador_2",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentoorientador_3",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "orientador_3",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentoorientador_4",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "orientador_4",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentocoorientador_1",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "coorientador",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentocoorientador_2",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "coorientador_2",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentocoorientador_3",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "coorientador_3",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "documentocoorientador_4",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "coorientador_4",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_add_producao_intelectual",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_producao_intelectual",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_subtipo_producao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_subtipo_producao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_area_concentracao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_area_concentracao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_linha_pesquisa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_linha_pesquisa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_projeto",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_projeto",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dh_inicio_area_conc",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dh_fim_area_conc",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dh_inicio_linha",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dh_fim_linha",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_keyword",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "in_trabalho_mesma_area",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_tp_vinculo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "in_orient_participou_banca",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_biblioteca_depositaria",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_tp_expectativa_atuacao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_expectativa_atuacao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_pessoa_discente",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dt_matricula",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_grau_academico",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_categoria_orientador",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_categoria_docente",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_regiao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "sg_uf_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_uf_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_grande_area_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "grande_area",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_area_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_subarea_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_subarea_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_especialidade",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_especialidade",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nr_volume",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nr_paginas",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_idioma",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_resumo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "url_texto_completo",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_pessoa_orientador",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "codigo_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "in_tcc_com_vinculo_producao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_add_producao_vinculo_ct",
+      "tipos": [
+        "large_string"
+      ]
+    }
+  ],
+  "arquivos": 5
+}

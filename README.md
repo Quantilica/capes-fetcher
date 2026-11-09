@@ -73,6 +73,10 @@ O catálogo cobre os 89, em 11 grupos.
 `list` e `sync` operam só no tier R1 (10 pacotes). O servidor da CAPES é lento
 (`package_list` em ~130 s); os comandos que consultam o CKAN podem demorar.
 
+## Documentação dos dados
+
+O que cada dataset contém, de onde vem, como chega ao lake e os cuidados de uso: [docs/README.md](docs/README.md).
+
 ## Licença
 
 Distribuído sob licença MIT. Consulte [LICENSE](LICENSE) para mais detalhes.

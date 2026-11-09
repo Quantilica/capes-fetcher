@@ -1,0 +1,215 @@
+{
+  "fonte": "capes",
+  "dataset": "programas",
+  "gerado_em": "2026-11-09T13:58:34+00:00",
+  "particoes": [
+    "ano"
+  ],
+  "colunas": [
+    {
+      "nome": "an_base",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_grande_area_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_area_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_subarea_conhecimento",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_especialidade",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_area_avaliacao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_area_avaliacao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_entidade_capes",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_entidade_emec",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "sg_entidade_ensino",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_entidade_ensino",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cs_status_juridico",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_dependencia_administrativa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_organizacao_academica",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_regiao",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_municipio_programa_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_modalidade_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_programa_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_programa_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_programa_idioma",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "sg_uf_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_grau_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "cd_conceito_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ano_inicio_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "an_inicio_curso",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "in_rede",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "sg_entidade_ensino_rede",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_situacao_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "dt_situacao_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_add_foto_programa_ies",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "id_add_foto_programa",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "ds_clientela_quadrienal_2017",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "nm_area_basica",
+      "tipos": [
+        "large_string"
+      ]
+    },
+    {
+      "nome": "an_inicio_programa",
+      "tipos": [
+        "large_string"
+      ]
+    }
+  ],
+  "arquivos": 3
+}
