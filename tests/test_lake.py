@@ -101,7 +101,7 @@ def test_convert_teses_three_eras(tmp_path: Path) -> None:
     assert "codigo_ies" in df_2024.columns
     assert "autor" in df_2024.columns
     assert "titulo" in df_2024.columns
-    assert "resumo" in df_2024.columns
+    assert "abstract" in df_2024.columns
     assert df_2024["autor"][0] == "ANA SOUZA"
 
 
@@ -386,3 +386,39 @@ def test_mesma_particao_com_conteudo_diferente_e_erro(tmp_path: Path) -> None:
     assert len(res.errors) == 1
     assert "ano=2015" in res.errors[0]
     assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2015": 2}
+
+
+def test_teses_separa_resumo_portugues_de_abstract_ingles(tmp_path: Path) -> None:
+    """Layout novo (2013+): DS_RESUMO (portugues) -> resumo; DS_ABSTRACT (ingles)
+    -> abstract. Nenhuma coluna sobrescreve a outra."""
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "teses_2018@20261101.csv").write_text(
+        "AN_BASE;NM_PRODUCAO;DS_ABSTRACT;DS_RESUMO\n"
+        "2018;TITULO;THIS STUDY APPROACHES;ESTE ESTUDO ABORDA\n",
+        encoding="utf-8",
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    df = pl.read_parquet(
+        list((tmp_path / "lake" / "capes" / "teses" / "ano=2018").glob("*.parquet"))
+    )
+    assert df["resumo"][0] == "ESTE ESTUDO ABORDA"
+    assert df["abstract"][0] == "THIS STUDY APPROACHES"
+    assert "ds_resumo" not in df.columns
+    assert "ds_abstract" not in df.columns
+
+
+def test_teses_layout_antigo_mantem_resumo(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "teses_2010@20261101.csv").write_text(
+        "AnoBase;TituloTese;ResumoTese\n2010;T;RESUMO ANTIGO\n", encoding="utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    df = pl.read_parquet(
+        list((tmp_path / "lake" / "capes" / "teses" / "ano=2010").glob("*.parquet"))
+    )
+    assert df["resumo"][0] == "RESUMO ANTIGO"
+    assert "abstract" not in df.columns

@@ -75,8 +75,9 @@ TESES_SYNONYMS: dict[str, str] = {
     "nm_coorientador": "coorientador",
     # Abstract / Keywords
     "resumotese": "resumo",
-    "ds_abstract": "resumo",
+    # DS_RESUMO e o resumo em portugues; DS_ABSTRACT, o abstract em ingles.
     "ds_resumo": "resumo",
+    "ds_abstract": "abstract",
     "palavraschave": "palavras_chave",
     "ds_palavra_chave": "palavras_chave",
     # Degree / Level

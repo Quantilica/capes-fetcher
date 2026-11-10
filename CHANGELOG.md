@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não lançado]
 
 ### Corrigido
+- `lake`: em `teses`, `resumo` passa a ser sempre o resumo em português (`DS_RESUMO`) e a nova coluna `abstract` traz o abstract em inglês (`DS_ABSTRACT`). Antes as duas colunas de origem apontavam para `resumo`: nos arquivos de 2013 em diante `resumo` recebia o abstract em inglês e o resumo em português ficava em `ds_resumo`. No layout antigo (1987 a 2012) `resumo` continua vindo de `ResumoTese` e não há `abstract`. **Mudança de contrato:** `abstract` é uma coluna nova, o conteúdo de `resumo` muda de idioma (inglês para português) nos anos de 2013 em diante e `ds_resumo` deixa de existir. **Reconverta `teses`.**
 - `lake`: `cursos` e `programas` passam a particionar por `ano` pelo valor da coluna de ano-base (`AN_BASE`), e não pelo ano do nome do arquivo. Antes, `cursos_2013` e `cursos_2015`, que trazem o mesmo conteúdo com `AN_BASE` = 2015, geravam `ano=2013` e `ano=2015` com as mesmas linhas. Quando o nome e a coluna divergem, vale a coluna e a conversão registra um aviso. Se dois arquivos caírem na mesma partição, o de conteúdo idêntico é ignorado com aviso e o de conteúdo diferente gera erro explícito, sem misturar dados. **Reconverta `cursos` e `programas`** para refazer as partições (apague as partições `ano=` antigas que não existem mais no bruto). Os anos 2013, 2014 e 2016 de `cursos` continuam sem dados: o arquivo publicado com nome 2013 traz o ano-base 2015 e não há arquivos para 2014 e 2016.
 
 ### Adicionado
