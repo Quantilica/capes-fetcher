@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+import hashlib
 import logging
 import os
 import re
@@ -96,6 +97,12 @@ TESES_SYNONYMS: dict[str, str] = {
     "linktese": "url_texto_completo",
     "ds_url_texto_completo": "url_texto_completo",
 }
+
+
+# Colunas de ano-base de qualquer dataset. Em ``teses`` o nome canonico e
+# ``ano_base`` (ver ``TESES_SYNONYMS``); em ``programas`` e ``cursos`` o nome
+# publicado (``an_base``) e mantido, mas tambem define a particao ``ano``.
+_YEAR_COLUMNS = ("ano_base", "an_base")
 
 
 def _norm_col(col_name: str) -> str:
@@ -244,6 +251,14 @@ def _detect_separator(csv_path: Path) -> str:
     return ";" if ";" in header else ","
 
 
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 _YEAR_TOKEN = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
 _ANO_MIN, _ANO_MAX = 1900, 2100
 
@@ -313,6 +328,10 @@ class CapesLakeConverter:
                 lake_path / self.source_id / ds, descriptor, force=force
             )
 
+        # (dataset, ano) -> (origem, sha256 do CSV) da primeira origem que gravou
+        # a particao; evita duas origens escrevendo o mesmo ano.
+        claimed: dict[tuple[str, int | None], tuple[str, str]] = {}
+
         all_raw_files = [f for f in input_path.rglob("*") if f.is_file()]
         active_files = select_current(all_raw_files)
 
@@ -349,6 +368,7 @@ class CapesLakeConverter:
                             csv_path,
                             label,
                             res,
+                            claimed,
                         )
                 except Exception as exc:
                     res.errors.append(
@@ -366,6 +386,7 @@ class CapesLakeConverter:
         csv_path: Path,
         label: str,
         res: ConvertResult,
+        claimed: dict[tuple[str, int | None], tuple[str, str]] | None = None,
     ) -> None:
         """Escreve um membro, uma particao ``ano`` por vez (lazy, streaming)."""
         # Tudo como texto (convencao do lake): o esquema nao depende de quantas
@@ -384,26 +405,65 @@ class CapesLakeConverter:
         if lf.head(1).collect().height == 0:
             return
 
-        if "ano_base" in rename.values():
-            # Ano-base por linha. Linha sem ano valido NAO ganha ano inventado:
-            # vai para a particao de quarentena (ano nulo).
+        year_col = next(
+            (c for c in _YEAR_COLUMNS if c in rename.values()),
+            None,
+        )
+        declared = _declared_year(label, raw_file.name.split("@", 1)[0])
+        if year_col is not None:
+            # Ano-base por linha: a coluna manda, nao o nome do arquivo. Linha
+            # sem ano valido NAO ganha ano inventado: vai para a particao de
+            # quarentena (ano nulo).
             ano = (
-                pl.col("ano_base")
+                pl.col(year_col)
                 .str.extract(r"(?:^|\D)(\d{4})(?:\D|$)", 1)
                 .cast(pl.Int32, strict=False)
             )
             ano = pl.when(ano.is_between(_ANO_MIN, _ANO_MAX)).then(ano)
         else:
-            declared = _declared_year(label, raw_file.name.split("@", 1)[0])
             if declared is None:
                 raise ValueError(
-                    "sem coluna ano_base e sem ano unico no nome do arquivo: "
+                    "sem coluna de ano-base e sem ano unico no nome do arquivo: "
                     "particao por ano indeterminada"
                 )
             ano = pl.lit(declared, dtype=pl.Int32)
         lf = lf.with_columns(ano.cast(pl.Int32).alias("ano"))
 
         anos = lf.select("ano").unique().collect()["ano"].to_list()
+        if year_col is not None and declared is not None and len(anos) == 1:
+            if anos[0] is not None and anos[0] != declared:
+                logger.warning(
+                    "CAPES %s: o nome do arquivo diz %d, mas a coluna de "
+                    "ano-base traz %d; a particao usa o valor da coluna "
+                    "(ano=%d)",
+                    label,
+                    declared,
+                    anos[0],
+                    anos[0],
+                )
+        if claimed is not None:
+            digest = _sha256_file(csv_path)
+            for year in anos:
+                other = claimed.get((ds_type, year))
+                if other is None:
+                    continue
+                if other[1] == digest:
+                    logger.warning(
+                        "CAPES %s: conteudo identico a %s, que ja gravou a "
+                        "particao ano=%s; arquivo ignorado",
+                        label,
+                        other[0],
+                        year,
+                    )
+                    res.skipped += 1
+                    return
+                raise ValueError(
+                    f"a particao ano={year} de {ds_type} ja foi gravada por "
+                    f"{other[0]} com conteudo diferente; confira o ano-base "
+                    "dos dois arquivos"
+                )
+            for year in anos:
+                claimed[(ds_type, year)] = (label, digest)
         for year in sorted(anos, key=lambda y: (y is None, y)):
             part = lf.filter(
                 pl.col("ano").is_null() if year is None else pl.col("ano") == year

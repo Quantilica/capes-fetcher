@@ -330,3 +330,59 @@ def test_nomes_reais_do_fetcher_programas_e_cursos(tmp_path: Path) -> None:
     assert not res.errors, res.errors
     assert _partitions(tmp_path / "lake" / "capes" / "programas") == {"ano=2013": 1}
     assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2017": 1}
+
+
+_CURSOS_CSV = "AN_BASE;CD_CURSO;NM_CURSO\n2015;1;MESTRADO A\n2015;2;DOUTORADO B\n"
+
+
+def test_cursos_particiona_pelo_an_base_da_coluna(tmp_path: Path, caplog) -> None:
+    """Dois arquivos com o mesmo conteudo (an_base=2015) e nomes 2013 e 2015:
+    a particao vem da coluna, nao do nome, e nao ha duplicacao."""
+    raw_dir = tmp_path / "raw" / "cursos"
+    raw_dir.mkdir(parents=True)
+    for nome in ("cursos_2013@20230126.csv", "cursos_2015@20230126.csv"):
+        (raw_dir / nome).write_text(_CURSOS_CSV, encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2015": 2}
+    assert any("cursos_2013" in r.getMessage() for r in caplog.records)
+
+
+def test_cursos_nome_diverge_da_coluna_avisa_e_usa_a_coluna(
+    tmp_path: Path, caplog
+) -> None:
+    raw_dir = tmp_path / "raw" / "cursos"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "cursos_2013@20230126.csv").write_text(_CURSOS_CSV, encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2015": 2}
+    assert any("coluna" in r.getMessage() for r in caplog.records)
+
+
+def test_programas_particiona_pelo_an_base_da_coluna(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "programas"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "programas_2014@20230126.csv").write_text(
+        "AN_BASE;CD_PROGRAMA_IES\n2016;P1\n", encoding="utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    assert _partitions(tmp_path / "lake" / "capes" / "programas") == {"ano=2016": 1}
+
+
+def test_mesma_particao_com_conteudo_diferente_e_erro(tmp_path: Path) -> None:
+    """Dois arquivos que caem na mesma particao com conteudos diferentes: o
+    segundo nao e gravado e o erro e explicito (nada e misturado em silencio)."""
+    raw_dir = tmp_path / "raw" / "cursos"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "cursos_2013@20230126.csv").write_text(_CURSOS_CSV, encoding="utf-8")
+    (raw_dir / "cursos_2015@20230126.csv").write_text(
+        "AN_BASE;CD_CURSO;NM_CURSO\n2015;9;OUTRO\n", encoding="utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert len(res.errors) == 1
+    assert "ano=2015" in res.errors[0]
+    assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2015": 2}

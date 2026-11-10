@@ -7,6 +7,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não lançado]
 
+### Corrigido
+- `lake`: `cursos` e `programas` passam a particionar por `ano` pelo valor da coluna de ano-base (`AN_BASE`), e não pelo ano do nome do arquivo. Antes, `cursos_2013` e `cursos_2015`, que trazem o mesmo conteúdo com `AN_BASE` = 2015, geravam `ano=2013` e `ano=2015` com as mesmas linhas. Quando o nome e a coluna divergem, vale a coluna e a conversão registra um aviso. Se dois arquivos caírem na mesma partição, o de conteúdo idêntico é ignorado com aviso e o de conteúdo diferente gera erro explícito, sem misturar dados. **Reconverta `cursos` e `programas`** para refazer as partições (apague as partições `ano=` antigas que não existem mais no bruto). Os anos 2013, 2014 e 2016 de `cursos` continuam sem dados: o arquivo publicado com nome 2013 traz o ano-base 2015 e não há arquivos para 2014 e 2016.
+
 ### Adicionado
 - Documentação dos dados em `docs/`, conforme a norma de documentação dos dados: página, dicionário de todas as variáveis e esquema de referência para cada um dos três datasets (`teses`, `programas` e `cursos`). Um teste a verifica.
 
