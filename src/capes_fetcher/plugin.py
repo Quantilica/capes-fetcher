@@ -19,6 +19,7 @@ from quantilica.cli.sdk import (
 from quantilica.cli.ui import get_console
 from quantilica.core.http import HttpClient, HttpStatusError
 from quantilica.core.manifests import manifest_sidecar_path
+from quantilica.core.registry import FetcherInfo
 from quantilica.core.sync import FreshnessPolicy
 
 from .catalog import GROUP_ALIASES, GROUPS, catalog_rows, list_datasets
@@ -100,6 +101,15 @@ def _build_client() -> HttpClient:
 fetcher = FetcherApp(
     name="capes",
     help="Coletor e conversor Lake Hive de dados da pós-graduação e teses da CAPES",
+    info=FetcherInfo(
+        id="capes",
+        nome="CAPES - Pós-Graduação e Teses",
+        orgao="Coordenação de Aperfeiçoamento de Pessoal de Nível Superior (CAPES)",
+        licenca="Creative Commons Atribuição (CC BY)",
+        homepage="https://dadosabertos.capes.gov.br",
+        cadencia="yearly",
+        dominio="educacao",
+    ),
     groups_dict=GROUPS,
     aliases_dict=ALIASES,
     list_datasets=list_datasets,
