@@ -388,6 +388,40 @@ def test_mesma_particao_com_conteudo_diferente_e_erro(tmp_path: Path) -> None:
     assert _partitions(tmp_path / "lake" / "capes" / "cursos") == {"ano=2015": 2}
 
 
+def test_teses_com_linha_de_quarentena_em_dois_arquivos_grava_ambos(
+    tmp_path: Path,
+) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "teses_2013@20261101.csv").write_text(
+        "AN_BASE;NM_PRODUCAO\n2013;A\nXXXX;B\n", encoding="utf-8"
+    )
+    (raw_dir / "teses_2014@20261101.csv").write_text(
+        "AN_BASE;NM_PRODUCAO\n2014;C\nYYYY;D\n", encoding="utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    parts = _partitions(tmp_path / "lake" / "capes" / "teses")
+    assert parts["ano=2013"] == 1
+    assert parts["ano=2014"] == 1
+    assert sum(parts.values()) == 4
+
+
+def test_arquivo_com_linha_de_outro_ano_nao_e_perdido(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "teses"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "teses_2014@20261101.csv").write_text(
+        "AN_BASE;NM_PRODUCAO\n2014;A\n", encoding="utf-8"
+    )
+    (raw_dir / "teses_2015@20261101.csv").write_text(
+        "AN_BASE;NM_PRODUCAO\n2015;B\n2014;C\n", encoding="utf-8"
+    )
+    res = converter.convert(raw_dir.parent, tmp_path / "lake")
+    assert not res.errors, res.errors
+    parts = _partitions(tmp_path / "lake" / "capes" / "teses")
+    assert parts == {"ano=2014": 2, "ano=2015": 1}
+
+
 def test_teses_separa_resumo_portugues_de_abstract_ingles(tmp_path: Path) -> None:
     """Layout novo (2013+): DS_RESUMO (portugues) -> resumo; DS_ABSTRACT (ingles)
     -> abstract. Nenhuma coluna sobrescreve a outra."""

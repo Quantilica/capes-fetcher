@@ -331,7 +331,7 @@ class CapesLakeConverter:
 
         # (dataset, ano) -> (origem, sha256 do CSV) da primeira origem que gravou
         # a particao; evita duas origens escrevendo o mesmo ano.
-        claimed: dict[tuple[str, int | None], tuple[str, str]] = {}
+        claimed: dict[tuple[str, frozenset[int]], tuple[str, str]] = {}
 
         all_raw_files = [f for f in input_path.rglob("*") if f.is_file()]
         active_files = select_current(all_raw_files)
@@ -387,7 +387,7 @@ class CapesLakeConverter:
         csv_path: Path,
         label: str,
         res: ConvertResult,
-        claimed: dict[tuple[str, int | None], tuple[str, str]] | None = None,
+        claimed: dict[tuple[str, frozenset[int]], tuple[str, str]] | None = None,
     ) -> None:
         """Escreve um membro, uma particao ``ano`` por vez (lazy, streaming)."""
         # Tudo como texto (convencao do lake): o esquema nao depende de quantas
@@ -442,29 +442,32 @@ class CapesLakeConverter:
                     anos[0],
                     anos[0],
                 )
-        if claimed is not None:
+        valid_years = frozenset(y for y in anos if y is not None)
+        if claimed is not None and valid_years:
+            # Colisao so quando dois arquivos cobrem exatamente os mesmos anos
+            # (arquivo inteiro com o nome errado). Anos que apenas se cruzam e
+            # a particao de quarentena (ano nulo) nao contam: cada arquivo grava
+            # com a propria chave e nao sobrescreve o outro.
             digest = _sha256_file(csv_path)
-            for year in anos:
-                other = claimed.get((ds_type, year))
-                if other is None:
-                    continue
+            other = claimed.get((ds_type, valid_years))
+            anos_txt = ", ".join(str(y) for y in sorted(valid_years))
+            if other is not None:
                 if other[1] == digest:
                     logger.warning(
-                        "CAPES %s: conteudo identico a %s, que ja gravou a "
-                        "particao ano=%s; arquivo ignorado",
+                        "CAPES %s: conteudo identico a %s, que ja gravou "
+                        "ano=%s; arquivo ignorado",
                         label,
                         other[0],
-                        year,
+                        anos_txt,
                     )
                     res.skipped += 1
                     return
                 raise ValueError(
-                    f"a particao ano={year} de {ds_type} ja foi gravada por "
-                    f"{other[0]} com conteudo diferente; confira o ano-base "
-                    "dos dois arquivos"
+                    f"as particoes ano={anos_txt} de {ds_type} ja foram "
+                    f"gravadas por {other[0]} com conteudo diferente; confira "
+                    "o ano-base dos dois arquivos"
                 )
-            for year in anos:
-                claimed[(ds_type, year)] = (label, digest)
+            claimed[(ds_type, valid_years)] = (label, digest)
         for year in sorted(anos, key=lambda y: (y is None, y)):
             part = lf.filter(
                 pl.col("ano").is_null() if year is None else pl.col("ano") == year
