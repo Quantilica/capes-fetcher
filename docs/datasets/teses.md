@@ -127,7 +127,7 @@ Descrições dos metadados oficiais da CAPES (versões 1987 a 2012, 2013 a 2016 
 | `numeropaginas` | `NumeroPaginas` | texto | Número de páginas da produção | páginas | A |
 | `bibliotecadepositaria` | `BibliotecaDepositaria` | texto | Descrição da biblioteca depositária | — | A |
 | `idioma` | `Idioma` | texto | Idioma da produção | `Português`, `Inglês`, `Outro` (amostra de 2004) | A |
-| `resumo` | `ResumoTese` (A); `DS_ABSTRACT` (B, C) | texto | Em A, o resumo da tese. Em B e C, o campo de origem é `DS_ABSTRACT` (abstract) e **não** o resumo em português, que está em `ds_resumo` | — | todos |
+| `resumo` | `ResumoTese` (A); `DS_RESUMO` (B, C) | texto | Resumo da tese ou dissertação, em português nos layouts B e C | — | todos |
 | `linhapesquisa` | `LinhaPesquisa` | texto | Descrição da linha de pesquisa | — | A |
 | `urltextocompleto` | `URLTextoCompleto` | texto | URL do texto completo da produção | URL; vazio na maioria das linhas das amostras de 1987 e 2004 | A |
 | `documentoorientador_1` | `DocumentoOrientador_1` | texto | CPF tarjado do orientador 1 | formato `(004*****897)` | A |
@@ -185,7 +185,7 @@ Descrições dos metadados oficiais da CAPES (versões 1987 a 2012, 2013 a 2016 
 | `nr_volume` | `NR_VOLUME` | texto | Número de volumes impressos, encadernados e depositados na biblioteca depositária | volumes | B, C |
 | `nr_paginas` | `NR_PAGINAS` | texto | Número de páginas da produção | páginas; o valor `0` aparece com frequência (veja os cuidados de uso) | B, C |
 | `nm_idioma` | `NM_IDIOMA` | texto | Idioma da produção | `PORTUGUES`, `INGLES`, `ESPANHOL` e outros, sem acento | B, C |
-| `ds_resumo` | `DS_RESUMO` | texto | Resumo da produção | — | B, C |
+| `abstract` | `DS_ABSTRACT` | texto | Abstract da produção, em inglês | — | B, C |
 | `url_texto_completo` | `DS_URL_TEXTO_COMPLETO` | texto | URL do texto completo da produção; nas amostras de 2013 a 2024 todas as linhas trazem um endereço de consulta na Plataforma Sucupira | URL | B, C |
 | `id_pessoa_orientador` | `ID_PESSOA_ORIENTADOR` | texto | Identifica o orientador vinculado à produção como pessoa na base da CAPES, em relação ao cadastro de pessoa física da Receita Federal | identificador numérico | B, C |
 | `codigo_ies` | `CD_ENTIDADE_CAPES` | texto | Código da instituição de ensino superior na CAPES | 8 dígitos | C |
@@ -198,14 +198,14 @@ Descrições dos metadados oficiais da CAPES (versões 1987 a 2012, 2013 a 2016 
 - Todas as colunas são texto, inclusive códigos (sem perda de zeros à esquerda) e datas. O esquema não depende do conteúdo lido.
 - O CSV é lido em UTF-8 e, se não for UTF-8 válido, em Windows-1252; bytes indefinidos viram o caractere de controle de mesmo código, sem perda.
 - Nomes de coluna em minúsculas sem acento; um dicionário de sinônimos leva nomes dos três layouts para nomes comuns (por exemplo `TituloTese`, `NM_PRODUCAO` e `DS_TITULO` viram `titulo`; `Nivel` e `NM_GRAU_ACADEMICO` viram `grau_academico`; `CD_ENTIDADE_CAPES` vira `codigo_ies`). Nomes sem sinônimo ficam só normalizados: por isso há colunas coladas (`grandeareadescricao`, `numeropaginas`, `linhapesquisa`) no layout A e `nm_*`/`cd_*` nos layouts B e C.
-- Quando duas colunas de um arquivo apontam para o mesmo nome comum, só uma recebe o nome comum; a outra mantém o nome normalizado. Caso real: nos layouts B e C `DS_ABSTRACT` vira `resumo` e `DS_RESUMO` fica `ds_resumo`.
+- Quando duas colunas de um arquivo apontam para o mesmo nome comum, só uma recebe o nome comum; a outra mantém o nome normalizado. Os campos `DS_RESUMO` (português) e `DS_ABSTRACT` (inglês) dos layouts B e C são colunas separadas: `resumo` e `abstract`. No layout A (1987 a 2012) só há `resumo` (de `ResumoTese`) e não há `abstract`.
 - A partição `ano` vem da coluna do ano-base de cada linha (primeiro número de 4 dígitos entre 1900 e 2100); linha sem ano válido vai para a partição de quarentena, sem ano inventado.
 - Colunas que existem só em alguns layouts aparecem nulas nos Parquet dos demais anos. O esquema de referência (`teses.schema.json`) reúne 86 colunas, gerado de uma conversão de amostras dos três layouts (1987, 2004, 2013, 2020 e 2024); a chave não é declarada: ver cuidados de uso.
 
 ## Cuidados de uso
 
 - **Três layouts com nomes diferentes para o mesmo conceito.** Região é `regiao` (1987 a 2012) e `nm_regiao` (2013 em diante); UF é `uf` e `sg_uf_ies`; grande área é `grandeareadescricao` e `grande_area`; páginas são `numeropaginas` e `nr_paginas`. Para uma série longa, una as colunas com `coalesce`. Evidência: esquemas das amostras de 1987, 2013 e 2024 (conferido em 2026-11-09, versão 0.3.0).
-- **`resumo` não é o resumo em português a partir de 2013.** Nos layouts B e C a coluna `resumo` traz o `DS_ABSTRACT`; o resumo está em `ds_resumo`. Na amostra de 2024 apenas 33 de 2.162 linhas têm `resumo` igual a `ds_resumo`; na de 2013, 302 linhas têm `resumo = NÃO INFORMADO`.
+- **`resumo` e `abstract`.** Nos layouts B e C (2013 em diante), `resumo` é o resumo em português (`DS_RESUMO`) e `abstract` o abstract em inglês (`DS_ABSTRACT`). No layout A (1987 a 2012) só existe `resumo` (de `ResumoTese`), sem `abstract`. A coluna `ds_resumo` não existe mais. Um lake convertido antes desta separação tem `resumo` com o abstract em inglês e `ds_resumo` com o português; apague `capes/teses` do lake e converta de novo.
 - **Datas em três formatos de texto.** `dd/mm/aaaa`, `dd/mm/aaaa hh:mm:ss` e `27MAR2024:00:00:00` (mês abreviado em inglês). Converta por era antes de comparar.
 - **Valores ausentes aparecem de formas diferentes.** Vazio (nulo no lake), `NÃO INFORMADO`, `NA` e `NÃO SE APLICA` convivem; `nr_paginas`/`numeropaginas` valem `0` em 534 de 2.162 linhas na amostra de 2024 e em 285 de 4.496 na de 1987, o que provavelmente significa páginas não informadas (hipótese, a fonte não define).
 - **CPF e nomes.** `documento_discente` e `documentoorientador_*` são o CPF mascarado pela fonte, mas ainda são dados pessoais; em 1987, quase todas as linhas da amostra trazem o mesmo valor `999*****999`. `autor`, `orientador` e `coorientador` são nomes de pessoas; trate o dado conforme a legislação de proteção de dados.

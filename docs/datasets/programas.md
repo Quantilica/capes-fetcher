@@ -72,7 +72,7 @@ Descrições dos metadados oficiais da CAPES (versões 2013 a 2016 e 2021 a 2024
 
 | Coluna no lake | Na fonte | Tipo | Descrição | Unidade / códigos | Período |
 |---|---|---|---|---|---|
-| `ano` | nome do arquivo (`programas_<AAAA>`) | inteiro (partição) | Ano da partição, tirado do ano do nome do arquivo; coincide com `an_base` nos arquivos conferidos | ano de 4 dígitos | todos |
+| `ano` | `AN_BASE` (valor da coluna) | inteiro (partição) | Ano da partição, tirado do ano-base de cada linha (`an_base`); o ano do nome do arquivo só vale se o arquivo não tiver essa coluna. Coincide com o ano do nome nos arquivos conferidos | ano de 4 dígitos | todos |
 | `an_base` | `AN_BASE` | texto | Ano de referência das atividades declaradas pelo programa | ano de 4 dígitos | todos |
 | `nm_grande_area_conhecimento` | `NM_GRANDE_AREA_CONHECIMENTO` | texto | Nome da grande área de conhecimento do programa | 9 valores na amostra de 2024 | todos |
 | `nm_area_conhecimento` | `NM_AREA_CONHECIMENTO` | texto | Nome da área de conhecimento do programa | — | todos |
@@ -113,7 +113,7 @@ Descrições dos metadados oficiais da CAPES (versões 2013 a 2016 e 2021 a 2024
 - Dataset `capes/programas`, particionado por `ano`, um Parquet por arquivo de origem.
 - Todas as colunas são texto, inclusive códigos e datas. O CSV é lido em UTF-8 e, se não for UTF-8 válido, em Windows-1252 (todos os arquivos conferidos caíram no segundo caso).
 - Os nomes das colunas são só normalizados (minúsculas, sem acento), sem sinônimos: a coluna do ano de início do programa tem um nome em cada era (`ano_inicio_programa` e `an_inicio_programa`).
-- A partição `ano` vem do ano que está no nome do arquivo, porque o conversor só usa a coluna do ano-base quando ela se chama `ano_base`, o que não ocorre aqui (a coluna é `an_base`). Se o nome não traz um ano único, o arquivo falha na conversão.
+- A partição `ano` vem da coluna do ano-base (`an_base`) de cada linha; o ano do nome do arquivo só vale quando o arquivo não tem essa coluna, e então ele precisa ser único, senão o arquivo falha na conversão. Se o nome e a coluna divergem, vale a coluna e a conversão avisa. Se dois arquivos cobrem exatamente os mesmos anos, o de conteúdo idêntico é ignorado com aviso e o de conteúdo diferente gera erro; essa checagem vale dentro de uma única execução de conversão.
 - O esquema de referência (`programas.schema.json`) tem 34 colunas, gerado de uma conversão de amostras de 2013, 2021 e 2024; nesses anos todos os layouts conferidos estão representados.
 
 ## Cuidados de uso

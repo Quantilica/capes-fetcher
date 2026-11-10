@@ -70,7 +70,7 @@ Descrições dos metadados oficiais da CAPES (versão 2021 a 2024); onde a fonte
 
 | Coluna no lake | Na fonte | Tipo | Descrição | Unidade / códigos | Período |
 |---|---|---|---|---|---|
-| `ano` | nome do arquivo (`cursos_<AAAA>`) | inteiro (partição) | Ano da partição, tirado do ano do nome do arquivo; nem sempre coincide com `an_base` (veja os cuidados de uso) | ano de 4 dígitos | todo |
+| `ano` | `AN_BASE` (valor da coluna) | inteiro (partição) | Ano da partição, tirado do ano-base de cada linha (`an_base`); o ano do nome do arquivo só vale se o arquivo não tiver essa coluna. Linha sem ano válido vai para a partição de quarentena (ano nulo) | ano de 4 dígitos | todo |
 | `an_base` | `AN_BASE` | texto | Ano de referência das atividades declaradas pelo programa | ano de 4 dígitos | todo |
 | `nm_grande_area_conhecimento` | `NM_GRANDE_AREA_CONHECIMENTO` | texto | Nome da grande área de conhecimento do programa do curso | 9 valores | todo |
 | `nm_area_conhecimento` | `NM_AREA_CONHECIMENTO` | texto | Nome da área de conhecimento do programa do curso | — | todo |
@@ -104,13 +104,14 @@ Descrições dos metadados oficiais da CAPES (versão 2021 a 2024); onde a fonte
 
 - Dataset `capes/cursos`, particionado por `ano`, um Parquet por arquivo de origem.
 - Todas as colunas são texto. O CSV é lido em UTF-8 e, se não for UTF-8 válido, em Windows-1252 (todos os arquivos conferidos caíram no segundo caso). Nomes de coluna só normalizados (minúsculas, sem acento), sem sinônimos.
-- A partição `ano` vem do ano que está no nome do arquivo (e não de `an_base`, porque o conversor só usa a coluna do ano-base quando ela se chama `ano_base`). Se o nome não traz um ano único, o arquivo falha na conversão.
+- A partição `ano` vem da coluna do ano-base (`an_base`) de cada linha; o ano do nome do arquivo só vale quando o arquivo não tem essa coluna, e então ele precisa ser único, senão o arquivo falha na conversão. Se o nome e a coluna divergem, vale a coluna e a conversão avisa. Se dois arquivos cobrem exatamente os mesmos anos, o de conteúdo idêntico é ignorado com aviso e o de conteúdo diferente gera erro; essa checagem vale dentro de uma única execução de conversão.
 - O esquema de referência (`cursos.schema.json`) tem 28 colunas, gerado de uma conversão de amostras de 2013, 2021 e 2024.
 
 ## Cuidados de uso
 
-- **O arquivo `cursos_2013` contém dados de 2015.** O bruto conferido tem `cursos_2013@20230126.csv` e `cursos_2015@20230126.csv` com o mesmo SHA-256, e a coluna `an_base` vale `2015` em ambos. No lake (conversão dos dois arquivos, conferida em 2026-11-09), as partições `ano=2013` e `ano=2015` trazem as mesmas 6.060 linhas de 2015, ou seja, duplicadas, de 3.946 programas distintos (o mesmo número de programas que o metadado oficial dá para 2015). Não use a partição `ano=2013` como 2013 e não some as duas partições; prefira `an_base` e remova duplicatas. Faltam no bruto os anos-base 2013, 2014 e 2016.
-- **`ano` e `an_base` podem divergir** pela mesma razão; para análises por ano, filtre por `an_base`.
+- **O arquivo `cursos_2013` contém dados de 2015.** O bruto conferido tem `cursos_2013@20230126.csv` e `cursos_2015@20230126.csv` com o mesmo SHA-256, e a coluna `an_base` vale `2015` em ambos. Como a partição vem de `an_base` e o conteúdo é idêntico, o lake tem `ano=2015` uma vez (6.060 linhas, de 3.946 programas distintos, o mesmo número que o metadado oficial dá para 2015) e não tem `ano=2013`; o segundo arquivo é ignorado com aviso. Faltam no bruto os anos-base 2013, 2014 e 2016, portanto não há dados de cursos desses anos.
+- **Reconversão de um lake antigo.** Um lake convertido antes desta regra tem `ano=2013` com dados de 2015 e, se a conversão foi refeita por cima, linhas duplicadas; apague `capes/cursos` do lake antes de converter de novo.
+- **`ano` e `an_base`** coincidem no lake atual, porque a partição vem de `an_base`; a divergência só existe no nome do arquivo bruto.
 - **`an_inicio_previsto = 9999`** significa ano não informado em cursos em projeto, segundo a fonte (máximo encontrado na amostra de 2024: 9999; mínimo: 1931). Descarte antes de calcular idades.
 - **Conceito.** Além de 3 a 7, a amostra de 2024 traz `1`, `2` e `A`. Não foi achada definição oficial de `A`.
 - **Cursos em projeto.** `ds_situacao_curso = EM PROJETO` (242 cursos em 2024) são cursos ainda não iniciados; exclua-os para contar cursos em funcionamento.
