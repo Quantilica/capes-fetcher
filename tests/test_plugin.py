@@ -66,3 +66,50 @@ def test_aliases_resolve_to_group_not_characters() -> None:
     for alias, canon in GROUP_ALIASES.items():
         assert fetcher.resolve_groups([alias]) == canon
         assert all(group in GROUPS for group in canon)
+
+
+def _clear_http_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "QUANTILICA_HTTP_TIMEOUT",
+        "QUANTILICA_HTTP_ATTEMPTS",
+        "QUANTILICA_HTTP_RETRY_DELAY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_download_client_aguenta_arquivo_de_450mb_a_baixa_vazao(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Teses de ~450 MB a ~0,4 MB/s (~20 min), sem ``Range`` (sem retomada).
+
+    O timeout do httpx é de leitura (tempo sem receber bytes), e o core não
+    impõe teto total ao download. As tentativas são poucas porque cada uma
+    perdida pode custar dezenas de minutos e o cron tem ``CRON_TIMEOUT``.
+    """
+    from capes_fetcher import plugin
+
+    _clear_http_env(monkeypatch)
+    client = plugin._build_client()
+    assert client.timeout >= 400  # cobre o 504 do proxy (~300 s) e pausas no corpo
+    assert 2 <= client.attempts <= 6
+    assert client.retry_base_delay >= 10  # compensa as poucas tentativas no 503
+    # Pior caso de falhas lentas cabe no CRON_TIMEOUT=14400 do cron da CAPES,
+    # com folga para o outro arquivo grande: tentativas * (20 min + leitura).
+    assert client.attempts * (1200 + client.timeout) <= 14400
+    assert client._build_client().timeout.read == client.timeout
+    # Sem gzip o servidor sempre informa o tamanho do CSV (verificável).
+    assert client.headers["Accept-Encoding"] == "identity"
+
+
+def test_download_client_respeita_o_ambiente(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from capes_fetcher import plugin
+
+    monkeypatch.setenv("QUANTILICA_HTTP_TIMEOUT", "42")
+    monkeypatch.setenv("QUANTILICA_HTTP_ATTEMPTS", "7")
+    monkeypatch.setenv("QUANTILICA_HTTP_RETRY_DELAY", "3")
+    client = plugin._build_client()
+    assert client.timeout == 42.0
+    assert client.attempts == 7
+    assert client.retry_base_delay == 3.0

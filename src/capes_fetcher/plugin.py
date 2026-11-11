@@ -82,19 +82,40 @@ def path_builder(
     return DataRepository(output_dir).path_for_entry(entry, last_modified=stamp)
 
 
-# Servidor da CAPES responde 503 com frequência sob carga: mais tentativas e
-# espera maior entre elas que o padrão do SDK (sobrescrevível pelo ambiente).
+# O servidor da CAPES é lento e instável: responde 503 sob carga, às vezes só
+# envia os cabeçalhos depois de minutos (o proxy devolve 504 aos ~300 s) e
+# entrega os CSVs de teses (~450 MB cada) a dezenas de KB/s ou poucas centenas
+# de KB/s, sem aceitar ``Range`` (não há retomada: toda falha recomeça do zero).
+# Por isso o orçamento de download é pensado por arquivo, não por requisição:
+# - ``DOWNLOAD_READ_TIMEOUT`` é o tempo máximo SEM RECEBER BYTES (o timeout do
+#   httpx é de leitura por chunk, não do download inteiro). Cobre a espera pelo
+#   504 do proxy (~300 s) e pausas no meio do corpo; o core não impõe teto total
+#   ao download (sem ``HostPolicy.deadline``), então um arquivo de ~20 min conclui.
+# - ``DOWNLOAD_ATTEMPTS``: 6 em vez de 8. Cada tentativa que cai no meio do corpo
+#   pode custar ~20 min; 6 * (20 min + espera) cabem no ``CRON_TIMEOUT=14400``
+#   do cron, 8 não. As que falham nos cabeçalhos custam no máximo ~5 min.
+# - ``DOWNLOAD_RETRY_DELAY`` maior que o padrão do SDK diante de 503/504.
+# - ``Accept-Encoding: identity``: com gzip o servidor ora responde com
+#   ``Content-Length``, ora em HTTP/1.1 chunked sem tamanho (medido em
+#   2026-11-10), o que tira a verificação de tamanho do download; sem gzip o
+#   corpo vem sempre com o tamanho do CSV.
+# Tempo, tentativas e espera são sobrescrevíveis por ``QUANTILICA_HTTP_TIMEOUT``
+# / ``_ATTEMPTS`` / ``_RETRY_DELAY``.
 DEFAULT_WORKERS = 2
-DOWNLOAD_ATTEMPTS = 8
-DOWNLOAD_RETRY_DELAY = 10.0
+DOWNLOAD_READ_TIMEOUT = 600.0
+DOWNLOAD_ATTEMPTS = 6
+DOWNLOAD_RETRY_DELAY = 30.0
 
 
 def _build_client() -> HttpClient:
     client = default_client()
+    if "QUANTILICA_HTTP_TIMEOUT" not in os.environ:
+        client.timeout = max(client.timeout, DOWNLOAD_READ_TIMEOUT)
     if "QUANTILICA_HTTP_ATTEMPTS" not in os.environ:
-        client.attempts = max(client.attempts, DOWNLOAD_ATTEMPTS)
+        client.attempts = DOWNLOAD_ATTEMPTS
     if "QUANTILICA_HTTP_RETRY_DELAY" not in os.environ:
         client.retry_base_delay = max(client.retry_base_delay, DOWNLOAD_RETRY_DELAY)
+    client.headers = {**client.headers, "Accept-Encoding": "identity"}
     return client
 
 

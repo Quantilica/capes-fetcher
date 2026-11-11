@@ -13,6 +13,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Alterado
 - Requer `quantilica-core>=0.19.0` (e `quantilica-cli>=0.17.0` como host).
 
+### Corrigido
+- Os CSVs de teses de 2017 e 2021 (~450 MB cada) falhavam no download com "Operation failed after 8 attempt(s)" (`ReadTimeout` e "peer closed connection"). O servidor da CAPES é lento e instável: às vezes só envia os cabeçalhos depois de minutos (o proxy devolve 504 aos ~300 s, e o timeout de 180 s do cliente estourava antes), entrega esses arquivos a dezenas ou poucas centenas de KB/s e não aceita `Range`, então toda falha recomeça do zero. O timeout de leitura (tempo sem receber bytes) passa de 180 s para 600 s e não há limite total para o download; as tentativas caem de 8 para 6, com espera inicial de 30 s entre elas, para que uma sequência de falhas lentas caiba no prazo da execução agendada. O download também pede o corpo sem compressão (`Accept-Encoding: identity`): com gzip o servidor ora omitia o tamanho do arquivo, o que impedia conferi-lo. Os valores continuam sobrescrevíveis por `QUANTILICA_HTTP_TIMEOUT`, `QUANTILICA_HTTP_ATTEMPTS` e `QUANTILICA_HTTP_RETRY_DELAY`.
+
 ## [0.4.0] - 2026-11-09
 
 ### Corrigido
