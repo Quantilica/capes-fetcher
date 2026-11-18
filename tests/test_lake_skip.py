@@ -412,3 +412,31 @@ def test_membro_duplicado_no_mesmo_zip_segue_contando_skipped(
     assert (r1.converted, r1.skipped, r1.errors) == (1, 1, [])
     r2 = converter.convert(raw, lake, datasets=["teses"])
     assert (r2.converted, r2.skipped, r2.errors) == (0, 2, [])
+
+
+def test_bruto_em_dia_que_vem_depois_de_quem_ja_reivindicou_os_anos_da_erro(
+    tmp_path: Path,
+) -> None:
+    """``teses_b_2020`` está no lake; aparece ``teses_a_2020`` (ordenado antes) com
+    conteúdo diferente nos mesmos anos. Como no main, o erro de colisão sai em
+    todo build e o ``b`` em dia não vira pulo silencioso."""
+    raw, lake = tmp_path / "raw", tmp_path / "lake"
+    (raw / "teses").mkdir(parents=True)
+    (raw / "teses" / "teses_b_2020@20261101.csv").write_text(
+        "AN_BASE;NM_AUTOR\n2020;B\n", encoding="utf-8"
+    )
+    _sidecars(raw)
+    r1 = converter.convert(raw, lake, datasets=["teses"])
+    assert (r1.converted, r1.skipped, r1.errors) == (1, 0, [])
+
+    (raw / "teses" / "teses_a_2020@20261101.csv").write_text(
+        "AN_BASE;NM_AUTOR\n2020;A\n", encoding="utf-8"
+    )
+    _sidecars(raw)
+    r2 = converter.convert(raw, lake, datasets=["teses"])
+    assert (r2.converted, r2.skipped, len(r2.errors)) == (1, 0, 1)
+    assert "ano=2020" in r2.errors[0] and "teses_a" in r2.errors[0]
+    for _ in range(2):
+        r = converter.convert(raw, lake, datasets=["teses"])
+        assert (r.converted, r.skipped, len(r.errors)) == (0, 1, 1)
+        assert "ano=2020" in r.errors[0] and "teses_a" in r.errors[0]

@@ -500,9 +500,13 @@ class CapesLakeConverter:
             for ds, w in candidatos.items():
                 if not force and w.origin_complete(raw_file):
                     saidas = w.origin_outputs(raw_file) or []
-                    res.skipped += len(saidas)
-                    self._adiar_particoes(claimed, ds, raw_file, saidas)
-                    continue
+                    # Anos ja reivindicados por outro bruto que veio antes na
+                    # ordem: a colisao tem de ser conferida (erro ou duplicata),
+                    # entao o bruto segue o caminho normal, como sem o pulo.
+                    if not self._colide_com_reivindicado(claimed, ds, saidas):
+                        res.skipped += len(saidas)
+                        self._adiar_particoes(claimed, ds, raw_file, saidas)
+                        continue
                 pendentes[ds] = w
             if not pendentes:
                 continue
@@ -535,6 +539,16 @@ class CapesLakeConverter:
                 )
 
         return res
+
+    @staticmethod
+    def _colide_com_reivindicado(
+        claimed: _Claimed, ds_type: str, saidas: Sequence[str]
+    ) -> bool:
+        """Algum membro do bruto em dia cobre os mesmos anos de um já reivindicado."""
+        return any(
+            (ds_type, frozenset(valores)) in claimed
+            for valores in _anos_declarados(saidas).values()
+        )
 
     @staticmethod
     def _adiar_particoes(
