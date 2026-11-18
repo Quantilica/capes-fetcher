@@ -18,7 +18,7 @@ from typing import IO
 
 try:
     import polars as pl
-    from quantilica.analytics.lake import META_FILE_KEY, ConvertResult, LakeWriter
+    from quantilica.analytics.lake import ConvertResult, LakeWriter, output_id
     from quantilica.core.lake import (
         DatasetDescriptor,
         composite_file_key,
@@ -288,9 +288,11 @@ def _detect_dataset_type(filename: str) -> str | None:
     return None
 
 
-_TMP_DIRNAME = ".tmp"
-_ORIGIN_FILE = "quantilica.origin_file"
 _HIVE_ANO = "ano="
+
+# Particoes ja gravadas por algum bruto: ``(dataset, anos)`` -> ``(rotulo, sha256
+# do CSV)``, ou ``_Adiado`` quando o bruto esta em dia no lake e nao foi aberto.
+_Claimed = dict[tuple[str, frozenset[int]], "tuple[str, str | None] | _Adiado"]
 
 
 @dataclass(frozen=True)
@@ -306,33 +308,31 @@ class _Adiado:
     file_key: str
 
 
-def _indexar_origens(
-    dataset_dir: Path,
-) -> dict[str, list[tuple[str | None, int | None]]]:
-    """``{bruto: [(chave de arquivo, ano da particao)]}`` so pelos rodapes do lake.
+@dataclass
+class _Plano:
+    """O que um membro vai gravar: quadro lazy (vale so dentro do ``with`` do CSV
+    transcodificado), anos das particoes e rotulo do ano declarado no nome."""
 
-    Uma listagem de diretorios e a leitura dos rodapes dos Parquets do dataset,
-    nunca do bruto. Cada Parquet e uma escrita (membro e ano) que o build sem
-    mudanca conta como ``skipped``; ``ano`` e ``None`` na quarentena.
+    lf: pl.LazyFrame
+    anos: list[int | None]
+    valid_years: frozenset[int]
+    declared: int | None
+    digest: str | None
+
+
+def _anos_declarados(saidas: Sequence[str]) -> dict[str, set[int]]:
+    """``{chave de arquivo: anos}`` das saidas declaradas (``ano=AAAA/<chave>``).
+
+    A quarentena (``ano=__HIVE_DEFAULT_PARTITION__``) nao conta, como ``valid_years``
+    na conversao.
     """
-    indice: dict[str, list[tuple[str | None, int | None]]] = {}
-    if not dataset_dir.is_dir():
-        return indice
-    for parquet in sorted(dataset_dir.rglob("*.parquet")):
-        if _TMP_DIRNAME in parquet.relative_to(dataset_dir).parts:
-            continue
-        try:
-            meta = pl.read_parquet_metadata(parquet)
-        except (OSError, pl.exceptions.PolarsError):
-            continue
-        nome = meta.get(_ORIGIN_FILE)
-        if not nome:
-            continue
-        pasta = parquet.parent.name
-        valor = pasta[len(_HIVE_ANO) :] if pasta.startswith(_HIVE_ANO) else ""
-        ano = int(valor) if valor.isdigit() else None
-        indice.setdefault(nome, []).append((meta.get(META_FILE_KEY), ano))
-    return indice
+    anos: dict[str, set[int]] = {}
+    for saida in saidas:
+        particao, _, chave = saida.partition("/")
+        valor = particao[len(_HIVE_ANO) :] if particao.startswith(_HIVE_ANO) else ""
+        if chave and valor.isdigit():
+            anos.setdefault(chave, set()).add(int(valor))
+    return anos
 
 
 def _resolver_adiado(adiado: _Adiado) -> tuple[str, str | None]:
@@ -352,6 +352,76 @@ def _resolver_adiado(adiado: _Adiado) -> tuple[str, str | None]:
     except (OSError, zipfile.BadZipFile, UnicodeDecodeError):
         pass
     return raw_file.name, None
+
+
+def _planejar(
+    csv_path: Path,
+    ds_type: str,
+    raw_file: Path,
+    label: str,
+    *,
+    com_digest: bool,
+) -> _Plano | None:
+    """Quadro com a coluna ``ano`` e os anos que o membro grava; ``None`` se vazio.
+
+    ``com_digest`` calcula o sha256 do CSV (conferencia de colisao), so quando ha
+    anos validos.
+    """
+    # Tudo como texto (convencao do lake): o esquema nao depende de quantas
+    # linhas a inferencia viu e codigos nao perdem zeros a esquerda.
+    lf = pl.scan_csv(
+        csv_path,
+        separator=_detect_separator(csv_path),
+        infer_schema=False,
+        encoding="utf8",
+    )
+    columns = lf.collect_schema().names()
+    rename = _canonical_rename(columns, TESES_SYNONYMS if ds_type == "teses" else None)
+    lf = lf.rename(rename)
+    if lf.head(1).collect().height == 0:
+        return None
+
+    year_col = next(
+        (c for c in _YEAR_COLUMNS if c in rename.values()),
+        None,
+    )
+    declared = _declared_year(label, raw_file.name.split("@", 1)[0])
+    if year_col is not None:
+        # Ano-base por linha: a coluna manda, nao o nome do arquivo. Linha
+        # sem ano valido NAO ganha ano inventado: vai para a particao de
+        # quarentena (ano nulo).
+        ano = (
+            pl.col(year_col)
+            .str.extract(r"(?:^|\D)(\d{4})(?:\D|$)", 1)
+            .cast(pl.Int32, strict=False)
+        )
+        ano = pl.when(ano.is_between(_ANO_MIN, _ANO_MAX)).then(ano)
+    else:
+        if declared is None:
+            raise ValueError(
+                "sem coluna de ano-base e sem ano unico no nome do arquivo: "
+                "particao por ano indeterminada"
+            )
+        ano = pl.lit(declared, dtype=pl.Int32)
+    lf = lf.with_columns(ano.cast(pl.Int32).alias("ano"))
+
+    anos = lf.select("ano").unique().collect()["ano"].to_list()
+    if year_col is not None and declared is not None and len(anos) == 1:
+        if anos[0] is not None and anos[0] != declared:
+            logger.warning(
+                "CAPES %s: o nome do arquivo diz %d, mas a coluna de "
+                "ano-base traz %d; a particao usa o valor da coluna "
+                "(ano=%d)",
+                label,
+                declared,
+                anos[0],
+                anos[0],
+            )
+    valid_years = frozenset(y for y in anos if y is not None)
+    digest = _sha256_file(csv_path) if com_digest and valid_years else None
+    return _Plano(
+        lf, sorted(anos, key=lambda y: (y is None, y)), valid_years, declared, digest
+    )
 
 
 class CapesLakeConverter:
@@ -381,6 +451,7 @@ class CapesLakeConverter:
 
         target_datasets = set(datasets or DATASETS)
 
+        # Initialize writers with partition ["ano"]
         writers: dict[str, LakeWriter] = {}
         for ds in target_datasets:
             if ds not in DATASETS:
@@ -399,9 +470,7 @@ class CapesLakeConverter:
         # (dataset, ano) -> (origem, sha256 do CSV) da primeira origem que gravou
         # a particao; evita duas origens escrevendo o mesmo ano. Um bruto pulado
         # por estar em dia entra como ``_Adiado`` e so e lido se houver colisao.
-        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado] = {}
-        # Rodapes do lake por bruto de origem, por dataset (lidos sob demanda).
-        origens: dict[str, dict[str, list[tuple[str | None, int | None]]]] = {}
+        claimed: _Claimed = {}
 
         all_raw_files = [
             f
@@ -412,31 +481,28 @@ class CapesLakeConverter:
 
         for raw_file in active_files:
             candidatos = writers
-            # O dataset de um arquivo sai do nome, sem abrir. Arquivo de outro
-            # dataset nao e desta tarefa (um ZIP nomeado para outro dataset nao
-            # e aberto); sem tipo no nome, so abrindo.
-            alvo = _detect_dataset_type(raw_file.name)
-            if alvo and alvo not in writers:
-                continue
             if raw_file.suffix.lower() == ".csv":
-                # CSV solto: o membro e o proprio arquivo; sem tipo, nao ha dataset.
-                if not alvo:
+                # CSV solto: o membro e o proprio arquivo, e o dataset sai do nome,
+                # sem abrir; sem tipo no nome (ou de outra tarefa) nao e desta
+                # tarefa. Em ZIP o nome do MEMBRO manda e o do ZIP so desempata, e
+                # so se sabe listando o diretorio do ZIP: nao se filtra pelo nome.
+                alvo = _detect_dataset_type(raw_file.name)
+                if not alvo or alvo not in writers:
                     continue
                 candidatos = {alvo: writers[alvo]}
-            # Em dia no lake: o bruto igual ao registrado nos rodapes e pulado antes
+            # Completo no lake: o bruto igual ao registrado nos rodapes, com TODAS
+            # as saidas que declarou (um Parquet por membro e ano), e pulado antes
             # de abrir o ZIP, transcodificar ou calcular hash do CSV (o bruto pode
-            # estar numa montagem lenta). ``skipped`` e o numero de Parquets
-            # gravados a partir dele, o mesmo que o laco abaixo contaria.
+            # estar numa montagem lenta). ``skipped`` e o numero de saidas
+            # declaradas, o mesmo que o laco abaixo contaria. Um build
+            # interrompido deixa saidas faltando e o bruto e reaberto.
             pendentes: dict[str, LakeWriter] = {}
             for ds, w in candidatos.items():
-                if not force:
-                    if ds not in origens:
-                        origens[ds] = _indexar_origens(w.dataset_dir)
-                    registros = origens[ds].get(raw_file.name)
-                    if registros and w.origin_recorded(raw_file):
-                        res.skipped += len(registros)
-                        self._adiar_particoes(claimed, ds, raw_file, registros)
-                        continue
+                if not force and w.origin_complete(raw_file):
+                    saidas = w.origin_outputs(raw_file) or []
+                    res.skipped += len(saidas)
+                    self._adiar_particoes(claimed, ds, raw_file, saidas)
+                    continue
                 pendentes[ds] = w
             if not pendentes:
                 continue
@@ -453,150 +519,170 @@ class CapesLakeConverter:
             else:
                 members = list(names)
 
+            # Membros por dataset, na ordem do ZIP.
+            por_dataset: dict[str, list[str | None]] = {}
             for name in members:
                 label = name or raw_file.name
                 ds_type = _detect_dataset_type(label) or _detect_dataset_type(
                     raw_file.name
                 )
-                if not ds_type or ds_type not in pendentes:
-                    continue
-                # Cada membro e uma origem propria no lake (chave composta
-                # zip+membro): o sha256 do ZIP e o mesmo para todos os membros.
-                key = composite_file_key(raw_file, name).lower()
-                try:
-                    with _member_as_utf8(raw_file, name) as csv_path:
-                        self._convert_member(
-                            pendentes[ds_type],
-                            ds_type,
-                            raw_file,
-                            key,
-                            csv_path,
-                            label,
-                            res,
-                            claimed,
-                        )
-                except Exception as exc:
-                    res.errors.append(
-                        f"Erro ao converter {label} em {raw_file.name}: {exc}"
-                    )
+                if ds_type and ds_type in pendentes:
+                    por_dataset.setdefault(ds_type, []).append(name)
+
+            for ds_type, membros in por_dataset.items():
+                self._convert_dataset(
+                    pendentes[ds_type], ds_type, raw_file, membros, claimed, res
+                )
 
         return res
 
     @staticmethod
     def _adiar_particoes(
-        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado],
-        ds_type: str,
-        raw_file: Path,
-        registros: list[tuple[str | None, int | None]],
+        claimed: _Claimed, ds_type: str, raw_file: Path, saidas: Sequence[str]
     ) -> None:
         """Registra em ``claimed`` os anos de cada membro de um bruto em dia.
 
-        Os anos vem das pastas ``ano=`` dos Parquets (a quarentena nao conta),
-        como ``valid_years`` na conversao; o sha256 do CSV so e calculado se
-        houver colisao (``_resolver_adiado``).
+        Os anos vem das saidas declaradas (``ano=AAAA/<chave>``), sem ler o lake;
+        o sha256 do CSV so e calculado se houver colisao (``_resolver_adiado``).
         """
-        anos: dict[str, set[int]] = {}
-        for chave, ano in registros:
-            if chave and ano is not None:
-                anos.setdefault(chave, set()).add(ano)
-        for chave, valores in anos.items():
+        for chave, valores in _anos_declarados(saidas).items():
             claimed.setdefault((ds_type, frozenset(valores)), _Adiado(raw_file, chave))
 
-    def _convert_member(
+    def _convert_dataset(
         self,
         writer: LakeWriter,
         ds_type: str,
         raw_file: Path,
-        key: str,
-        csv_path: Path,
-        label: str,
+        membros: list[str | None],
+        claimed: _Claimed,
         res: ConvertResult,
-        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado]
-        | None = None,
+    ) -> None:
+        """Converte os membros de um bruto que caem num dataset.
+
+        Cada Parquet declara TODAS as saidas do bruto no dataset (a uniao dos anos
+        de todos os membros gravados), para o proximo build so pular o bruto
+        quando nenhuma faltar. Com mais de um membro as saidas so se conhecem
+        planejando todos antes da primeira escrita (uma passada a mais); com um so,
+        a mesma passada planeja e grava. Membro que da erro, ou que e duplicata de
+        outro (``skipped``), deixa o bruto sem declaracao: segue sendo reaberto e
+        o erro/contagem se repete a cada build, como sempre.
+        """
+        saidas: list[str] | None = None
+        escrever = membros
+        if len(membros) > 1:
+            uniao: set[str] = set()
+            escrever = []
+            limpo = True
+            for name in membros:
+                label = name or raw_file.name
+                key = composite_file_key(raw_file, name).lower()
+                try:
+                    with _member_as_utf8(raw_file, name) as csv_path:
+                        plano = _planejar(
+                            csv_path, ds_type, raw_file, label, com_digest=True
+                        )
+                        decisao = self._conferir_colisao(
+                            plano, ds_type, label, claimed, res
+                        )
+                except Exception as exc:
+                    limpo = False
+                    res.errors.append(
+                        f"Erro ao converter {label} em {raw_file.name}: {exc}"
+                    )
+                    continue
+                if decisao == "duplicado":
+                    limpo = False
+                elif plano is not None:
+                    escrever.append(name)
+                    uniao.update(output_id({"ano": y}, key) for y in plano.anos)
+            saidas = sorted(uniao) if limpo and uniao else None
+
+        for name in escrever:
+            label = name or raw_file.name
+            # Cada membro e uma origem propria no lake (chave composta
+            # zip+membro): o sha256 do ZIP e o mesmo para todos os membros.
+            key = composite_file_key(raw_file, name).lower()
+            try:
+                with _member_as_utf8(raw_file, name) as csv_path:
+                    plano = _planejar(
+                        csv_path,
+                        ds_type,
+                        raw_file,
+                        label,
+                        com_digest=len(membros) == 1,
+                    )
+                    if plano is None:
+                        continue
+                    declaradas = saidas
+                    if len(membros) == 1:
+                        if (
+                            self._conferir_colisao(plano, ds_type, label, claimed, res)
+                            == "duplicado"
+                        ):
+                            continue
+                        declaradas = [output_id({"ano": y}, key) for y in plano.anos]
+                    self._escrever_anos(
+                        writer, raw_file, key, plano, label, declaradas, res
+                    )
+            except Exception as exc:
+                res.errors.append(
+                    f"Erro ao converter {label} em {raw_file.name}: {exc}"
+                )
+
+    @staticmethod
+    def _conferir_colisao(
+        plano: _Plano | None,
+        ds_type: str,
+        label: str,
+        claimed: _Claimed,
+        res: ConvertResult,
+    ) -> str:
+        """``"gravar"``, ``"duplicado"`` (conteudo igual ao de outro; conta
+        ``skipped``) ou levanta ``ValueError`` (mesmas particoes, conteudo diferente).
+
+        Colisao so quando dois arquivos cobrem exatamente os mesmos anos (arquivo
+        inteiro com o nome errado). Anos que apenas se cruzam e a particao de
+        quarentena (ano nulo) nao contam: cada arquivo grava com a propria chave e
+        nao sobrescreve o outro.
+        """
+        if plano is None or not plano.valid_years:
+            return "gravar"
+        other = claimed.get((ds_type, plano.valid_years))
+        if isinstance(other, _Adiado):
+            other = _resolver_adiado(other)
+        anos_txt = ", ".join(str(y) for y in sorted(plano.valid_years))
+        if other is not None:
+            if other[1] == plano.digest:
+                logger.warning(
+                    "CAPES %s: conteudo identico a %s, que ja gravou ano=%s; "
+                    "arquivo ignorado",
+                    label,
+                    other[0],
+                    anos_txt,
+                )
+                res.skipped += 1
+                return "duplicado"
+            raise ValueError(
+                f"as particoes ano={anos_txt} de {ds_type} ja foram "
+                f"gravadas por {other[0]} com conteudo diferente; confira "
+                "o ano-base dos dois arquivos"
+            )
+        claimed[(ds_type, plano.valid_years)] = (label, plano.digest or "")
+        return "gravar"
+
+    @staticmethod
+    def _escrever_anos(
+        writer: LakeWriter,
+        raw_file: Path,
+        key: str,
+        plano: _Plano,
+        label: str,
+        declaradas: list[str] | None,
+        res: ConvertResult,
     ) -> None:
         """Escreve um membro, uma particao ``ano`` por vez (lazy, streaming)."""
-        # Tudo como texto (convencao do lake): o esquema nao depende de quantas
-        # linhas a inferencia viu e codigos nao perdem zeros a esquerda.
-        lf = pl.scan_csv(
-            csv_path,
-            separator=_detect_separator(csv_path),
-            infer_schema=False,
-            encoding="utf8",
-        )
-        columns = lf.collect_schema().names()
-        rename = _canonical_rename(
-            columns, TESES_SYNONYMS if ds_type == "teses" else None
-        )
-        lf = lf.rename(rename)
-        if lf.head(1).collect().height == 0:
-            return
-
-        year_col = next(
-            (c for c in _YEAR_COLUMNS if c in rename.values()),
-            None,
-        )
-        declared = _declared_year(label, raw_file.name.split("@", 1)[0])
-        if year_col is not None:
-            # Ano-base por linha: a coluna manda, nao o nome do arquivo. Linha
-            # sem ano valido NAO ganha ano inventado: vai para a particao de
-            # quarentena (ano nulo).
-            ano = (
-                pl.col(year_col)
-                .str.extract(r"(?:^|\D)(\d{4})(?:\D|$)", 1)
-                .cast(pl.Int32, strict=False)
-            )
-            ano = pl.when(ano.is_between(_ANO_MIN, _ANO_MAX)).then(ano)
-        else:
-            if declared is None:
-                raise ValueError(
-                    "sem coluna de ano-base e sem ano unico no nome do arquivo: "
-                    "particao por ano indeterminada"
-                )
-            ano = pl.lit(declared, dtype=pl.Int32)
-        lf = lf.with_columns(ano.cast(pl.Int32).alias("ano"))
-
-        anos = lf.select("ano").unique().collect()["ano"].to_list()
-        if year_col is not None and declared is not None and len(anos) == 1:
-            if anos[0] is not None and anos[0] != declared:
-                logger.warning(
-                    "CAPES %s: o nome do arquivo diz %d, mas a coluna de "
-                    "ano-base traz %d; a particao usa o valor da coluna "
-                    "(ano=%d)",
-                    label,
-                    declared,
-                    anos[0],
-                    anos[0],
-                )
-        valid_years = frozenset(y for y in anos if y is not None)
-        if claimed is not None and valid_years:
-            # Colisao so quando dois arquivos cobrem exatamente os mesmos anos
-            # (arquivo inteiro com o nome errado). Anos que apenas se cruzam e
-            # a particao de quarentena (ano nulo) nao contam: cada arquivo grava
-            # com a propria chave e nao sobrescreve o outro.
-            digest = _sha256_file(csv_path)
-            other = claimed.get((ds_type, valid_years))
-            if isinstance(other, _Adiado):
-                other = _resolver_adiado(other)
-            anos_txt = ", ".join(str(y) for y in sorted(valid_years))
-            if other is not None:
-                if other[1] == digest:
-                    logger.warning(
-                        "CAPES %s: conteudo identico a %s, que ja gravou "
-                        "ano=%s; arquivo ignorado",
-                        label,
-                        other[0],
-                        anos_txt,
-                    )
-                    res.skipped += 1
-                    return
-                raise ValueError(
-                    f"as particoes ano={anos_txt} de {ds_type} ja foram "
-                    f"gravadas por {other[0]} com conteudo diferente; confira "
-                    "o ano-base dos dois arquivos"
-                )
-            claimed[(ds_type, valid_years)] = (label, digest)
-        for year in sorted(anos, key=lambda y: (y is None, y)):
-            part = lf.filter(
+        for year in plano.anos:
+            part = plano.lf.filter(
                 pl.col("ano").is_null() if year is None else pl.col("ano") == year
             )
             if year is None:
@@ -612,6 +698,7 @@ class CapesLakeConverter:
                 src=raw_file,
                 partitions={"ano": year},
                 file_key_name=key,
+                origin_outputs=declaradas,
             )
             if written.status == "skipped":
                 res.skipped += 1
