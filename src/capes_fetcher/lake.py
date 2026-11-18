@@ -12,12 +12,13 @@ import unicodedata
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
 try:
     import polars as pl
-    from quantilica.analytics.lake import ConvertResult, LakeWriter
+    from quantilica.analytics.lake import META_FILE_KEY, ConvertResult, LakeWriter
     from quantilica.core.lake import (
         DatasetDescriptor,
         composite_file_key,
@@ -287,6 +288,72 @@ def _detect_dataset_type(filename: str) -> str | None:
     return None
 
 
+_TMP_DIRNAME = ".tmp"
+_ORIGIN_FILE = "quantilica.origin_file"
+_HIVE_ANO = "ano="
+
+
+@dataclass(frozen=True)
+class _Adiado:
+    """Particao de um bruto em dia no lake, ainda nao conferida contra outros.
+
+    O build sem mudanca nao le o bruto em dia, mas a conferencia de colisao
+    (``claimed``) precisa do sha256 do CSV dele quando um segundo arquivo cai nas
+    mesmas particoes. O bruto so e aberto nesse caso (``_resolver_adiado``).
+    """
+
+    raw_file: Path
+    file_key: str
+
+
+def _indexar_origens(
+    dataset_dir: Path,
+) -> dict[str, list[tuple[str | None, int | None]]]:
+    """``{bruto: [(chave de arquivo, ano da particao)]}`` so pelos rodapes do lake.
+
+    Uma listagem de diretorios e a leitura dos rodapes dos Parquets do dataset,
+    nunca do bruto. Cada Parquet e uma escrita (membro e ano) que o build sem
+    mudanca conta como ``skipped``; ``ano`` e ``None`` na quarentena.
+    """
+    indice: dict[str, list[tuple[str | None, int | None]]] = {}
+    if not dataset_dir.is_dir():
+        return indice
+    for parquet in sorted(dataset_dir.rglob("*.parquet")):
+        if _TMP_DIRNAME in parquet.relative_to(dataset_dir).parts:
+            continue
+        try:
+            meta = pl.read_parquet_metadata(parquet)
+        except (OSError, pl.exceptions.PolarsError):
+            continue
+        nome = meta.get(_ORIGIN_FILE)
+        if not nome:
+            continue
+        pasta = parquet.parent.name
+        valor = pasta[len(_HIVE_ANO) :] if pasta.startswith(_HIVE_ANO) else ""
+        ano = int(valor) if valor.isdigit() else None
+        indice.setdefault(nome, []).append((meta.get(META_FILE_KEY), ano))
+    return indice
+
+
+def _resolver_adiado(adiado: _Adiado) -> tuple[str, str | None]:
+    """``(rotulo, sha256 do CSV)`` do membro de um bruto em dia (abre o bruto).
+
+    So e chamado quando outro arquivo cai nas mesmas particoes: o mesmo sha256 que
+    a conversao do bruto teria registrado em ``claimed``. ``None`` no digest
+    quando o membro nao e encontrado (o chamador trata como conteudo diferente).
+    """
+    raw_file = adiado.raw_file
+    try:
+        names = _csv_member_names(raw_file)
+        for name in [None] if names is None else names:
+            if composite_file_key(raw_file, name).lower() == adiado.file_key:
+                with _member_as_utf8(raw_file, name) as csv_path:
+                    return name or raw_file.name, _sha256_file(csv_path)
+    except (OSError, zipfile.BadZipFile, UnicodeDecodeError):
+        pass
+    return raw_file.name, None
+
+
 class CapesLakeConverter:
     """Universal Hive Parquet Lake converter for CAPES datasets."""
 
@@ -330,13 +397,50 @@ class CapesLakeConverter:
             )
 
         # (dataset, ano) -> (origem, sha256 do CSV) da primeira origem que gravou
-        # a particao; evita duas origens escrevendo o mesmo ano.
-        claimed: dict[tuple[str, frozenset[int]], tuple[str, str]] = {}
+        # a particao; evita duas origens escrevendo o mesmo ano. Um bruto pulado
+        # por estar em dia entra como ``_Adiado`` e so e lido se houver colisao.
+        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado] = {}
+        # Rodapes do lake por bruto de origem, por dataset (lidos sob demanda).
+        origens: dict[str, dict[str, list[tuple[str | None, int | None]]]] = {}
 
-        all_raw_files = [f for f in input_path.rglob("*") if f.is_file()]
+        all_raw_files = [
+            f
+            for f in input_path.rglob("*")
+            if f.is_file() and not f.name.endswith(".manifest.json")
+        ]
         active_files = select_current(all_raw_files)
 
         for raw_file in active_files:
+            candidatos = writers
+            # O dataset de um arquivo sai do nome, sem abrir. Arquivo de outro
+            # dataset nao e desta tarefa (um ZIP nomeado para outro dataset nao
+            # e aberto); sem tipo no nome, so abrindo.
+            alvo = _detect_dataset_type(raw_file.name)
+            if alvo and alvo not in writers:
+                continue
+            if raw_file.suffix.lower() == ".csv":
+                # CSV solto: o membro e o proprio arquivo; sem tipo, nao ha dataset.
+                if not alvo:
+                    continue
+                candidatos = {alvo: writers[alvo]}
+            # Em dia no lake: o bruto igual ao registrado nos rodapes e pulado antes
+            # de abrir o ZIP, transcodificar ou calcular hash do CSV (o bruto pode
+            # estar numa montagem lenta). ``skipped`` e o numero de Parquets
+            # gravados a partir dele, o mesmo que o laco abaixo contaria.
+            pendentes: dict[str, LakeWriter] = {}
+            for ds, w in candidatos.items():
+                if not force:
+                    if ds not in origens:
+                        origens[ds] = _indexar_origens(w.dataset_dir)
+                    registros = origens[ds].get(raw_file.name)
+                    if registros and w.origin_recorded(raw_file):
+                        res.skipped += len(registros)
+                        self._adiar_particoes(claimed, ds, raw_file, registros)
+                        continue
+                pendentes[ds] = w
+            if not pendentes:
+                continue
+
             try:
                 names = _csv_member_names(raw_file)
             except (OSError, zipfile.BadZipFile) as exc:
@@ -354,7 +458,7 @@ class CapesLakeConverter:
                 ds_type = _detect_dataset_type(label) or _detect_dataset_type(
                     raw_file.name
                 )
-                if not ds_type or ds_type not in writers:
+                if not ds_type or ds_type not in pendentes:
                     continue
                 # Cada membro e uma origem propria no lake (chave composta
                 # zip+membro): o sha256 do ZIP e o mesmo para todos os membros.
@@ -362,7 +466,7 @@ class CapesLakeConverter:
                 try:
                     with _member_as_utf8(raw_file, name) as csv_path:
                         self._convert_member(
-                            writers[ds_type],
+                            pendentes[ds_type],
                             ds_type,
                             raw_file,
                             key,
@@ -378,6 +482,26 @@ class CapesLakeConverter:
 
         return res
 
+    @staticmethod
+    def _adiar_particoes(
+        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado],
+        ds_type: str,
+        raw_file: Path,
+        registros: list[tuple[str | None, int | None]],
+    ) -> None:
+        """Registra em ``claimed`` os anos de cada membro de um bruto em dia.
+
+        Os anos vem das pastas ``ano=`` dos Parquets (a quarentena nao conta),
+        como ``valid_years`` na conversao; o sha256 do CSV so e calculado se
+        houver colisao (``_resolver_adiado``).
+        """
+        anos: dict[str, set[int]] = {}
+        for chave, ano in registros:
+            if chave and ano is not None:
+                anos.setdefault(chave, set()).add(ano)
+        for chave, valores in anos.items():
+            claimed.setdefault((ds_type, frozenset(valores)), _Adiado(raw_file, chave))
+
     def _convert_member(
         self,
         writer: LakeWriter,
@@ -387,7 +511,8 @@ class CapesLakeConverter:
         csv_path: Path,
         label: str,
         res: ConvertResult,
-        claimed: dict[tuple[str, frozenset[int]], tuple[str, str]] | None = None,
+        claimed: dict[tuple[str, frozenset[int]], tuple[str, str | None] | _Adiado]
+        | None = None,
     ) -> None:
         """Escreve um membro, uma particao ``ano`` por vez (lazy, streaming)."""
         # Tudo como texto (convencao do lake): o esquema nao depende de quantas
@@ -450,6 +575,8 @@ class CapesLakeConverter:
             # com a propria chave e nao sobrescreve o outro.
             digest = _sha256_file(csv_path)
             other = claimed.get((ds_type, valid_years))
+            if isinstance(other, _Adiado):
+                other = _resolver_adiado(other)
             anos_txt = ", ".join(str(y) for y in sorted(valid_years))
             if other is not None:
                 if other[1] == digest:
