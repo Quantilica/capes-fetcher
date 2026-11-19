@@ -92,8 +92,11 @@ def path_builder(
 #   504 do proxy (~300 s) e pausas no meio do corpo; o core não impõe teto total
 #   ao download (sem ``HostPolicy.deadline``), então um arquivo de ~20 min conclui.
 # - ``DOWNLOAD_ATTEMPTS``: 6 em vez de 8. Cada tentativa que cai no meio do corpo
-#   pode custar ~20 min; 6 * (20 min + espera) cabem no ``CRON_TIMEOUT=14400``
-#   do cron, 8 não. As que falham nos cabeçalhos custam no máximo ~5 min.
+#   pode custar ~20 min; 6 * (20 min + espera) já passam do tempo limite da
+#   rodada (2 h, 7200 s), então no pior caso (todas as tentativas caindo no meio
+#   do corpo) o tempo limite corta a rodada antes de as tentativas acabarem e a
+#   coleta recomeça na rodada seguinte. 8 tentativas só aumentariam o desperdício.
+#   As que falham nos cabeçalhos custam no máximo ~5 min, e aí as 6 cabem.
 # - ``DOWNLOAD_RETRY_DELAY`` maior que o padrão do SDK diante de 503/504.
 # - ``Accept-Encoding: identity``: com gzip o servidor ora responde com
 #   ``Content-Length``, ora em HTTP/1.1 chunked sem tamanho (medido em
