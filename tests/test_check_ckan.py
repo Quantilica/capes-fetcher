@@ -195,3 +195,25 @@ def test_ano_do_recurso_teses_inalterado() -> None:
         catalog._resource_year("CAPES-BTD-1987-2019-11-01", "u/dados_1987.csv") == 1987
     )
     assert catalog._resource_year("BR-X-2021-2025-03-31", "u/x.csv") == 2021
+
+
+def test_pacote_cursos_2013a2016_real_gera_quatro_caminhos_distintos(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regressão: os 4 recursos do pacote 2013a2016 (nomes e URLs reais do CKAN,
+    com ``2013A2016``/``2013a2016`` no meio e o ano do recurso depois do último
+    ``_``) nunca podem cair no mesmo caminho (antes pegava-se o primeiro ano do
+    nome, 2013, para todos)."""
+    fixture = Path(__file__).parent / "fixtures" / "package_cursos_2013a2016.json"
+    package = json.loads(fixture.read_text(encoding="utf-8"))
+    monkeypatch.setattr(catalog.CapesClient, "package_show", lambda self, slug: package)
+    entries = catalog._entries_for_group(
+        "cursos",
+        "cursos",
+        ["cursos-da-pos-graduacao-stricto-sensu-do-brasil-de-2013-a-2015"],
+    )
+    assert [e["year"] for e in entries] == [2013, 2014, 2015, 2016]
+    assert [e["id"] for e in entries] == [f"cursos_{y}" for y in range(2013, 2017)]
+    nomes = [path_builder(tmp_path, e, dt.date(2023, 1, 26)).name for e in entries]
+    assert nomes == [f"cursos_{y}@20230126.csv" for y in range(2013, 2017)]

@@ -55,7 +55,7 @@ Cadastro anual dos cursos que compõem os programas de pós-graduação stricto 
 
 - O fetcher baixa os CSVs dos pacotes "Cursos da Pós-Graduação Stricto Sensu do Brasil" do portal de dados abertos da CAPES: 2013 a 2016, 2017 a 2020 e 2021 a 2024. Cada pacote traz um CSV e um XLSX por ano-base; o fetcher usa o CSV.
 - No bruto, cada ano é `cursos_<AAAA>@<AAAAMMDD>.csv`, em que o sufixo é a data da última modificação do arquivo na fonte (`Last-Modified`), ou, sem ela, a data do CKAN.
-- Conferido em 2026-11-09 pela listagem do bruto: 10 arquivos, com os anos 2013, 2015, 2017 a 2024. Faltam 2014 e 2016, e o arquivo `cursos_2013` tem exatamente o mesmo conteúdo (mesmo SHA-256) que `cursos_2015`, com ano-base 2015 (veja os cuidados de uso).
+- O pacote de 2013 a 2016 publica um CSV por ano-base, com nomes de recurso que terminam em `_2013`, `_2014`, `_2015` e `_2016`; o fetcher usa o sufixo final como ano do arquivo e gera um caminho distinto para cada um. Até a versão 0.2.x o ano era lido do primeiro número do nome do recurso (2013), e os quatro arquivos do pacote eram gravados com o mesmo nome `cursos_2013`; arquivos brutos obtidos assim podem não corresponder ao ano do nome (veja os cuidados de uso).
 
 ## Conteúdo
 
@@ -109,8 +109,8 @@ Descrições dos metadados oficiais da CAPES (versão 2021 a 2024); onde a fonte
 
 ## Cuidados de uso
 
-- **O arquivo `cursos_2013` contém dados de 2015.** O bruto conferido tem `cursos_2013@20230126.csv` e `cursos_2015@20230126.csv` com o mesmo SHA-256, e a coluna `an_base` vale `2015` em ambos. Como a partição vem de `an_base` e o conteúdo é idêntico, o lake tem `ano=2015` uma vez (6.060 linhas, de 3.946 programas distintos, o mesmo número que o metadado oficial dá para 2015) e não tem `ano=2013`; o segundo arquivo é ignorado com aviso. Faltam no bruto os anos-base 2013, 2014 e 2016, portanto não há dados de cursos desses anos.
-- **Reconversão de um lake antigo.** Um lake convertido antes desta regra tem `ano=2013` com dados de 2015 e, se a conversão foi refeita por cima, linhas duplicadas; apague `capes/cursos` do lake antes de converter de novo.
+- **Arquivo `cursos_2013` obtido antes da versão 0.3.0.** A fonte não repete o mesmo arquivo em dois anos: cada um dos quatro recursos do pacote 2013 a 2016 tem o próprio ano-base. O erro estava na coleta antiga, que dava o mesmo nome aos quatro recursos; um `cursos_2013@...csv` dessa origem pode conter os dados de outro ano do pacote (por exemplo 2015). Como a partição vem de `an_base`, o ano certo é o da coluna, não o do nome. Para ter 2013, 2014, 2015 e 2016, baixe de novo os quatro arquivos com a versão atual.
+- **Reconversão de um lake antigo.** Um lake convertido a partir desses arquivos pode ter `ano=2013` com dados de outro ano e, se a conversão foi refeita por cima, linhas duplicadas; apague `capes/cursos` do lake antes de converter de novo.
 - **`ano` e `an_base`** coincidem no lake atual, porque a partição vem de `an_base`; a divergência só existe no nome do arquivo bruto.
 - **`an_inicio_previsto = 9999`** significa ano não informado em cursos em projeto, segundo a fonte (máximo encontrado na amostra de 2024: 9999; mínimo: 1931). Descarte antes de calcular idades.
 - **Conceito.** Além de 3 a 7, a amostra de 2024 traz `1`, `2` e `A`. Não foi achada definição oficial de `A`.

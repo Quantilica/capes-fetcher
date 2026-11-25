@@ -26,7 +26,7 @@ def _csv(raw: Path, nome: str, texto: str) -> None:
 def test_inventory_csv_de_conteudo_identico_e_gemeo(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
     _csv(raw, "cursos_2013@20230126.csv", _CURSOS)
-    _csv(raw, "cursos_2016@20230126.csv", _CURSOS)  # a CAPES repetiu o 2013
+    _csv(raw, "cursos_2016@20230126.csv", _CURSOS)  # identico ao 2013
     _csv(raw, "cursos_2014@20230126.csv", _OUTRO)
 
     plano = _plano(raw)

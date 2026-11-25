@@ -1,0 +1,61 @@
+{
+ "name": "cursos-da-pos-graduacao-stricto-sensu-do-brasil-de-2013-a-2015",
+ "resources": [
+  {
+   "id": "e716dbbd-0d2a-4334-baec-ea2bce2d2bc5",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013A2016-2020-06-12_2013",
+   "format": "CSV",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/e716dbbd-0d2a-4334-baec-ea2bce2d2bc5/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2013.csv",
+   "last_modified": "2020-06-29T20:10:23.570063"
+  },
+  {
+   "id": "5886ec35-a6be-4ba5-9974-491a64e93c31",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013A2016-2020-06-12_2013",
+   "format": "XLSX",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/5886ec35-a6be-4ba5-9974-491a64e93c31/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2013.xlsx",
+   "last_modified": "2020-06-29T20:11:29.965154"
+  },
+  {
+   "id": "f345b668-5ddc-47da-bfd4-79634dbe5520",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013a2016-2020-06-12_2014",
+   "format": "CSV",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/f345b668-5ddc-47da-bfd4-79634dbe5520/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2014.csv",
+   "last_modified": "2020-06-29T20:12:47.554184"
+  },
+  {
+   "id": "2f11a2e9-9adb-4921-aa77-017dd420519d",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013a2016-2020-06-12_2014",
+   "format": "XLSX",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/2f11a2e9-9adb-4921-aa77-017dd420519d/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2014.xlsx",
+   "last_modified": "2020-06-29T20:13:45.213039"
+  },
+  {
+   "id": "2bf5e680-1a80-45e5-8467-79bd652df45e",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013a2016-2020-06-12_2015",
+   "format": "CSV",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/2bf5e680-1a80-45e5-8467-79bd652df45e/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2015.csv",
+   "last_modified": "2020-06-29T20:14:49.791000"
+  },
+  {
+   "id": "0a26ab4c-588c-43a4-a48a-8a6cc113af2e",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013a2016-2020-06-12_2015",
+   "format": "XLSX",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/0a26ab4c-588c-43a4-a48a-8a6cc113af2e/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2015.xlsx",
+   "last_modified": "2020-06-29T20:15:30.955687"
+  },
+  {
+   "id": "91135a08-d0a9-4a0f-adfd-b8987142af62",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013a2016-2020-06-12_2016",
+   "format": "CSV",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/91135a08-d0a9-4a0f-adfd-b8987142af62/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2016.csv",
+   "last_modified": "2020-06-29T20:16:16.730511"
+  },
+  {
+   "id": "55ba24db-99d0-4600-8e70-7a9beff88d5d",
+   "name": "BR-CAPES-COLSUCUP-CURSO-2013A2016-2020-06-12_2016",
+   "format": "XLSX",
+   "url": "https://dadosabertos.capes.gov.br/dataset/0bf65b56-a70b-40e7-80d6-34603312f3a5/resource/55ba24db-99d0-4600-8e70-7a9beff88d5d/download/br-capes-colsucup-curso-2013a2016-2020-06-12_2016.xlsx",
+   "last_modified": "2020-06-29T20:16:58.619810"
+  }
+ ]
+}

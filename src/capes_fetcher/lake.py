@@ -464,10 +464,9 @@ class CapesLakeConverter:
         """O que o conversor faz com cada bruto, para a cobertura da auditoria.
 
         Arquivo que nao seja ZIP ou CSV e ``nao_tabular``; versao antiga de um bruto
-        que tem outra mais nova e ``superado``. A CAPES publica, de vez em quando,
-        o mesmo CSV em dois anos (``cursos_2016`` identico ao ``cursos_2013``): o
-        conversor grava o primeiro e ignora os seguintes, de conteudo identico
-        (sha256) no mesmo dataset, e o inventario os declara ``gemeo``, para a
+        que tem outra mais nova e ``superado``. Os vigentes do mesmo dataset de
+        conteudo identico (sha256) contam como gemeos: o conversor grava o primeiro
+        e ignora os seguintes, e o inventario os declara ``gemeo``, para a
         auditoria nao cobrar Parquet. Os demais devem gerar Parquet.
         """
         input_path = Path(input_dir)
