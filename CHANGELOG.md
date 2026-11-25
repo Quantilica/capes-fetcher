@@ -5,11 +5,12 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [0.5.2] - 2026-11-24
+## [Não lançado]
 
 ### Corrigido
 
-- `lake`: o conversor passa a ter `inventory()`, e a auditoria do lake deixa de acusar `sem_parquet` no CSV que o conversor ignora de propósito por ter conteúdo idêntico ao de outro. A CAPES publica às vezes o mesmo arquivo em dois anos (`cursos_2016` idêntico ao `cursos_2013`): o `convert` grava o primeiro, na ordem dos arquivos vigentes, e conta `skipped` o seguinte, mas a cobertura da auditoria o cobrava. A regra é genérica: dentro do mesmo dataset (pelo nome), o arquivo vigente de sha256 igual ao de um que vem antes é declarado `gemeo` (o hash só é calculado entre arquivos do mesmo tamanho). Arquivo que não é ZIP nem CSV é `nao_tabular`; versão antiga de um bruto que tem outra mais nova é `superado` e não entra na comparação; os demais seguem esperando Parquet. O `convert` não muda.
+- `lake`: o conversor passa a ter `inventory()`, e a auditoria do lake deixa de acusar `sem_parquet` no CSV que o conversor ignora de propósito por ter conteúdo idêntico ao de outro. O `convert` grava o primeiro arquivo, na ordem dos arquivos vigentes, e conta `skipped` o seguinte, mas a cobertura da auditoria o cobrava. Dentro do mesmo dataset (pelo nome), o arquivo vigente de sha256 igual ao de um que vem antes é declarado `gemeo` (o hash só é calculado entre arquivos do mesmo tamanho). Arquivo que não é ZIP nem CSV é `nao_tabular`; versão antiga de um bruto que tem outra mais nova é `superado` e não entra na comparação; os demais seguem esperando Parquet. O `convert` não muda.
+- Correção de uma afirmação da 0.4.0: a CAPES não publica o mesmo arquivo de `cursos` em dois anos. Os quatro recursos do pacote 2013 a 2016 têm cada um o próprio ano-base (2013, 2014, 2015 e 2016). O que se via em `cursos_2013` e `cursos_2015` vinha de coletas anteriores à 0.3.0, que liam o primeiro ano do nome do recurso (2013) e davam o mesmo nome aos quatro arquivos; desde a 0.3.0 cada um tem o seu caminho (`cursos_2013` a `cursos_2016`), agora coberto por teste com os nomes reais dos recursos. Onde a 0.4.0 diz que os anos 2013, 2014 e 2016 de `cursos` "continuam sem dados" por falta de arquivos na fonte, leia: faltavam apenas os arquivos corretos na coleta; a fonte os publica. A documentação de `cursos` foi corrigida no mesmo sentido.
 
 ## [0.5.1] - 2026-11-19
 
