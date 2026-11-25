@@ -21,6 +21,7 @@ try:
     from quantilica.analytics.lake import ConvertResult, LakeWriter, output_id
     from quantilica.core.lake import (
         DatasetDescriptor,
+        Planned,
         composite_file_key,
         partition_types_for,
         select_current,
@@ -277,6 +278,31 @@ def _declared_year(*names: str) -> int | None:
     return None
 
 
+def _gemeos(arquivos: Sequence[Path]) -> set[Path]:
+    """Arquivos de conteudo identico (sha256) ao de outro que vem antes na ordem.
+
+    So conta dentro do mesmo tipo de dataset (pelo nome): e a regra do conversor,
+    que ignora o arquivo cujas particoes e conteudo ja foram gravados por outro
+    (``_conferir_colisao``). O primeiro de cada grupo, na ordem dada, e o que
+    grava. So se calcula o hash dos que tem o mesmo tamanho.
+    """
+    por_tamanho: dict[tuple[str | None, int], list[Path]] = {}
+    for f in arquivos:
+        chave = (_detect_dataset_type(f.name), f.stat().st_size)
+        por_tamanho.setdefault(chave, []).append(f)
+    gemeos: set[Path] = set()
+    for grupo in por_tamanho.values():
+        if len(grupo) < 2:
+            continue
+        vistos: set[str] = set()
+        for f in grupo:
+            digest = _sha256_file(f)
+            if digest in vistos:
+                gemeos.add(f)
+            vistos.add(digest)
+    return gemeos
+
+
 def _detect_dataset_type(filename: str) -> str | None:
     s = filename.lower()
     if "programa" in s:
@@ -433,6 +459,43 @@ class CapesLakeConverter:
     def datasets(self) -> list[str]:
         """Return available dataset identifiers."""
         return list(DATASETS)
+
+    def inventory(self, input_dir: Path) -> list[Planned]:
+        """O que o conversor faz com cada bruto, para a cobertura da auditoria.
+
+        Arquivo que nao seja ZIP ou CSV e ``nao_tabular``; versao antiga de um bruto
+        que tem outra mais nova e ``superado``. A CAPES publica, de vez em quando,
+        o mesmo CSV em dois anos (``cursos_2016`` identico ao ``cursos_2013``): o
+        conversor grava o primeiro e ignora os seguintes, de conteudo identico
+        (sha256) no mesmo dataset, e o inventario os declara ``gemeo``, para a
+        auditoria nao cobrar Parquet. Os demais devem gerar Parquet.
+        """
+        input_path = Path(input_dir)
+        if not input_path.is_dir():
+            return []
+        arquivos = [
+            f
+            for f in sorted(input_path.rglob("*"))
+            if f.is_file() and not f.name.endswith((".manifest.json", ".tmp"))
+        ]
+        dados = [f for f in arquivos if f.suffix.lower() in (".zip", ".csv")]
+        vigentes = select_current(dados)
+        gemeos = _gemeos(vigentes)
+        atuais = set(vigentes)
+        tabulares = set(dados)
+        planned: list[Planned] = []
+        for f in arquivos:
+            if f not in tabulares:
+                planned.append(Planned(f, skip_reason="nao_tabular"))
+            elif f not in atuais:
+                planned.append(Planned(f, skip_reason="superado"))
+            elif f in gemeos:
+                planned.append(Planned(f, skip_reason="gemeo"))
+            elif f.suffix.lower() == ".csv":
+                planned.append(Planned(f, dataset=_detect_dataset_type(f.name)))
+            else:  # ZIP: o dataset sai do nome do membro
+                planned.append(Planned(f))
+        return planned
 
     def convert(
         self,

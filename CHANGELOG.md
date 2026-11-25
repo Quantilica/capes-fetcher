@@ -5,6 +5,12 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Corrigido
+
+- `lake`: o conversor passa a ter `inventory()`, e a auditoria do lake deixa de acusar `sem_parquet` no CSV que o conversor ignora de propósito por ter conteúdo idêntico ao de outro. A CAPES publica às vezes o mesmo arquivo em dois anos (`cursos_2016` idêntico ao `cursos_2013`): o `convert` grava o primeiro, na ordem dos arquivos vigentes, e conta `skipped` o seguinte, mas a cobertura da auditoria o cobrava. A regra é genérica: dentro do mesmo dataset (pelo nome), o arquivo vigente de sha256 igual ao de um que vem antes é declarado `gemeo` (o hash só é calculado entre arquivos do mesmo tamanho). Arquivo que não é ZIP nem CSV é `nao_tabular`; versão antiga de um bruto que tem outra mais nova é `superado` e não entra na comparação; os demais seguem esperando Parquet. O `convert` não muda.
+
 ## [0.5.1] - 2026-11-19
 
 ### Adicionado
