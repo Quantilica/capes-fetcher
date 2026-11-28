@@ -136,22 +136,32 @@ def test_grupos_vazios_por_desenho_sao_os_que_so_tem_pacotes_listados() -> None:
 def test_probe_head_usa_o_cliente_padrao_com_orcamento_curto(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """O timeout efetivo do httpx, dentro do ``with``, é o da sonda (não o de 180 s)."""
     import httpx2
     from quantilica.core.http import HttpClient
 
     from capes_fetcher import plugin
 
-    built: list[HttpClient] = []
+    visto: dict[str, Any] = {}
+
+    class Espiao(HttpClient):
+        def head(self, url: str, **kwargs: Any) -> Any:
+            assert self._client is not None  # dentro do ``with``
+            visto["timeout"] = self._client.timeout
+            visto["attempts"] = self.attempts
+            return super().head(url, **kwargs)
 
     def fake_default_client() -> HttpClient:
-        client = HttpClient(
-            transport=httpx2.MockTransport(lambda req: httpx2.Response(200))
+        # como o ``default_client()`` do host: 180 s por padrão
+        return Espiao(
+            timeout=180.0,
+            attempts=5,
+            transport=httpx2.MockTransport(lambda req: httpx2.Response(200)),
         )
-        built.append(client)
-        return client
 
     monkeypatch.setattr(plugin, "default_client", fake_default_client)
     response = plugin._probe_head("https://capes.test/x.csv")
     assert response.status_code == 200
-    assert built[0].timeout == plugin.PROBE_TIMEOUT
-    assert built[0].attempts == plugin.PROBE_ATTEMPTS
+    assert visto["timeout"].read == plugin.PROBE_TIMEOUT
+    assert visto["timeout"].connect == plugin.PROBE_TIMEOUT
+    assert visto["attempts"] == plugin.PROBE_ATTEMPTS

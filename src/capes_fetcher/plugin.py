@@ -170,10 +170,13 @@ def _http_date(moment: dt.datetime) -> str:
 def _probe_head(url: str) -> Any:
     """HEAD rápido (poucas tentativas) para recursos sem tamanho no CKAN."""
     # Cliente padrão do host (``QUANTILICA_HTTP_*``, SSL, CA) com orçamento curto.
-    with default_client() as client:
-        client.timeout = PROBE_TIMEOUT
-        client.attempts = PROBE_ATTEMPTS
-        client.retry_base_delay = PROBE_RETRY_DELAY
+    # O orçamento vai ANTES do ``with``: o ``__enter__`` monta o cliente httpx com o
+    # timeout que o objeto tem naquele momento, e mudá-lo depois não o alcança.
+    client = default_client()
+    client.timeout = PROBE_TIMEOUT
+    client.attempts = PROBE_ATTEMPTS
+    client.retry_base_delay = PROBE_RETRY_DELAY
+    with client:
         return client.head(url)
 
 

@@ -16,7 +16,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - `client`: `CapesClient.download_resource` chamava `download_with_manifest` com `manifest_path=` e sem `source_id`, `dataset_id` e `producer` (`TypeError` em qualquer chamada real; o teste mockava o método do core). Agora recebe `dataset_id` (obrigatório), `source_id="capes"`, `producer="capes-fetcher"`, `force` e `expected_format` (por padrão, o da extensão do destino, de modo que HTML de bloqueio com HTTP 200 não vira arquivo), e devolve o `Path` baixado, como o core, em vez de um manifesto. Testada com o `download_with_manifest` real sobre transporte simulado. Nada no monorepo a chamava.
 - `client`: o cliente da descoberta (`package_list`, `package_show`) deixa de ser um `HttpClient` próprio e passa a ser o cliente padrão do host, que respeita `QUANTILICA_HTTP_*`, `QUANTILICA_SSL_VERIFY` e o bundle de CA. O tempo por requisição fica em no mínimo 300 s (o servidor é lento), salvo `QUANTILICA_HTTP_TIMEOUT`. Sem o host instalado, cai num cliente do core com a verificação TLS lida do ambiente.
-- `plugin`: o HEAD de frescor do `check` usa o cliente padrão do host, com o orçamento curto de antes (30 s, 2 tentativas).
+- `plugin`: o HEAD de frescor do `check` usa o cliente padrão do host, com o orçamento curto de antes (30 s, 2 tentativas). O orçamento é definido antes de abrir o cliente (`with`): o `__enter__` monta o cliente httpx com o timeout que o objeto tem naquele instante, e mudá-lo depois não o alcançava (a sonda ficava com os 180 s do cliente padrão). O teste confere o timeout efetivo do httpx dentro do `with`.
 
 ### Alterado
 
