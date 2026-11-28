@@ -18,7 +18,7 @@ def _names() -> list[str]:
 
 def test_package_list_atual_nao_tem_novidade() -> None:
     report = discover(_names())
-    assert report.known == 89
+    assert report.known == 88
     assert not report.has_changes
 
 
@@ -46,3 +46,21 @@ def test_package_search_amostra_sem_crescimento() -> None:
 def test_resposta_vazia_vira_erro() -> None:
     with pytest.raises(RuntimeError, match="não devolveu pacotes"):
         discover([])
+
+
+def test_fonte_de_antes_de_2026_11_28_contra_o_catalogo_novo() -> None:
+    """O inverso do achado de 28/11: a fonte antiga aparece como novos e removidos."""
+    names = _names()
+    names.remove("2021-a-2025-servidores-da-capes")
+    names.remove("2023-a-2025-projetos-de-cooperacao-internacional-pesquisa-scba")
+    names += [
+        "2021-a-2025-dotacao-e-execucao-orcamentaria-da-capes",
+        "2023-a-2025-bolsas-dos-mestrados-profissionais-em-rede-nacional-proeb",
+        "2023-a-2025-bolsistas-da-universidade-aberta-do-brasil-uab",
+    ]
+    report = discover(names)
+    assert [p["slug"] for p in report.new_packages] == names[-3:]
+    assert sorted(report.removed_packages) == [
+        "2021-a-2025-servidores-da-capes",
+        "2023-a-2025-projetos-de-cooperacao-internacional-pesquisa-scba",
+    ]

@@ -95,7 +95,7 @@ class CapesPackage:
     """Descritor estático de um pacote do CKAN da CAPES.
 
     Cada tema do portal é fatiado em 2 a 6 pacotes por era; ``tema`` é o grupo
-    CKAN específico do pacote (os 26 temas do portal).
+    CKAN específico do pacote (os 27 temas do portal).
 
     Attributes:
         slug: Nome do pacote no CKAN.
@@ -105,7 +105,7 @@ class CapesPackage:
         era_start: Primeiro ano coberto pelo pacote.
         era_end: Último ano coberto pelo pacote.
         tier: ``r1`` (baixa hoje) ou ``listed`` (listado; download em release futura).
-        n_csv: Recursos CSV no snapshot de 2026-11-03.
+        n_csv: Recursos CSV no último snapshot (2026-11-28).
         n_xlsx: Recursos XLSX (duplicam os CSV; nunca baixados).
         note: Observação.
     """

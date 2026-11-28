@@ -73,4 +73,16 @@ PACKAGES: tuple[CapesPackage, ...] = (
         n_xlsx=1,
         note="",
     ),
+    CapesPackage(
+        slug="2021-a-2025-servidores-da-capes",
+        group=GROUP,
+        tema="servidores-da-capes",
+        title="Servidores da Capes",
+        era_start=2021,
+        era_end=2025,
+        tier="listed",
+        n_csv=2,
+        n_xlsx=2,
+        note="Incluído em 2026-11-28; CSV 2021-2024 e 2025-2026.",
+    ),
 )

@@ -53,8 +53,8 @@ quantilica capes convert /data/capes /data/lake
 
 ## Cobertura do catálogo
 
-O CKAN da CAPES publica 89 pacotes (2026-11-03), fatias por era de 26 temas.
-O catálogo cobre os 89, em 11 grupos.
+O CKAN da CAPES publica 88 pacotes (2026-11-28), fatias por era de 27 temas.
+O catálogo cobre os 88, em 11 grupos.
 
 | Grupo | Temas | Pacotes | R1 (baixa) | Listado |
 |---|---:|---:|---:|---:|
@@ -64,11 +64,11 @@ O catálogo cobre os 89, em 11 grupos.
 | pessoas | 2 | 8 | 0 | 8 |
 | producao | 3 | 16 | 0 | 16 |
 | projetos | 3 | 11 | 0 | 11 |
-| bolsas | 5 | 17 | 0 | 17 |
+| bolsas | 6 | 17 | 0 | 17 |
 | formacao-professores | 4 | 8 | 0 | 8 |
-| fomento | 3 | 9 | 0 | 9 |
+| fomento | 3 | 7 | 0 | 7 |
 | periodicos | 1 | 5 | 0 | 5 |
-| gestao | 2 | 5 | 0 | 5 |
+| gestao | 2 | 6 | 0 | 6 |
 
 `list` e `sync` operam só no tier R1 (10 pacotes). O servidor da CAPES é lento
 (`package_list` em ~130 s); os comandos que consultam o CKAN podem demorar.

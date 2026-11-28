@@ -6,7 +6,7 @@ portanto **descoberto** a partir de ``package_show`` — essa é a única forma 
 conhecer a URL real do recurso e o ano a que ele se refere.
 
 O catálogo é em duas camadas, com um módulo ``catalog_<dominio>.py`` por grupo
-(``CATALOG`` traz os 89 pacotes do CKAN, fatias por era dos 26 temas do portal):
+(``CATALOG`` traz os 88 pacotes do CKAN, fatias por era dos 27 temas do portal):
 
 - ``tier="r1"``: baixa hoje (teses, programas e cursos); é o que
   :func:`list_datasets` expande;

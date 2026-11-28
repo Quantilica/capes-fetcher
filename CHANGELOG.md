@@ -5,6 +5,21 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+
+- Catálogo: dois pacotes que o CKAN passou a publicar, ambos `listed` (catalogados, sem download): `2021-a-2025-servidores-da-capes` (grupo `gestao`, tema `servidores-da-capes`; CSV de 2021 a 2024 com 355 486 bytes e de 2025-2026 com 85 793) e `2023-a-2025-projetos-de-cooperacao-internacional-pesquisa-scba` (grupo `bolsas`, tema novo `projetos-de-cooperacao-internacional-pesquisa`, da área de bolsas e auxílios; CSV de 2023 com 189 575 bytes, de 2024 com 442 044 e de 2025-2026 com 43 883). Cada pacote traz também o XLSX equivalente e os metadados em PDF e HTML. O catálogo passa de 26 para 27 temas.
+
+### Removido
+
+- Catálogo: três pacotes deixaram de ser públicos no CKAN entre 2026-11-03 (snapshot anterior do catálogo) e 2026-11-28 (o `package_list` não os traz mais e o `package_show` responde 403; confirmado em 2026-11-28; não houve renomeação, fusão em outro pacote nem recurso equivalente em outro pacote da fonte): `2021-a-2025-dotacao-e-execucao-orcamentaria-da-capes` (tema Dotação e Execução Orçamentária; sobra a era `2013-a-2020`), `2023-a-2025-bolsas-dos-mestrados-profissionais-em-rede-nacional-proeb` (sobram as eras até 2022) e `2023-a-2025-bolsistas-da-universidade-aberta-do-brasil-uab` (sobram as eras até 2022). Os três eram `listed`: nunca houve arquivo baixado deles, e o fetcher não apaga nada. Se a fonte os republicar, o `discover` os apontará como pacotes novos.
+
+### Corrigido
+
+- Catálogo: `2023-a-2025-programa-universidade-aberta-do-brasil-uab` ganhou um terceiro CSV (e XLSX) na fonte; a contagem passa de 2 para 3.
+- Testes: o `package_list` gravado passa a ser o de 2026-11-28 (88 pacotes) e novos testes provam que um grupo só de pacotes listados nunca consulta a fonte e que um pacote que baixa (teses, programas, cursos) e some do CKAN levanta erro em vez de devolver lista vazia.
+
 ## [0.6.0] - 2026-11-28
 
 ### Adicionado
