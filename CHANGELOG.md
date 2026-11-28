@@ -5,6 +5,23 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+
+- `plugin`: declara `expected_empty_groups` com os 8 grupos que só têm pacotes `listed` (`pessoas`, `producao`, `projetos`, `bolsas`, `formacao-professores`, `fomento`, `periodicos`, `gestao`). Eles são catalogados e nunca baixam; com o `quantilica-cli` 0.30.0, que trata catálogo vazio como erro, sair sem entradas nesses grupos não gera aviso nem erro. Os grupos que baixam (`teses`, `programas`, `cursos`) seguem falhando se esvaziarem. Exige `quantilica-cli>=0.30.0` no host.
+- `client`: `pick_package_resources` avisa em WARNING quando dois recursos de formato baixável (CSV ou ZIP) e URLs diferentes dividem o mesmo `name` no CKAN: o core fica com um só por nome e o outro deixava de ser coletado sem aviso. A linha traz o pacote, o nome e as duas URLs. A escolha não mudou. O XLSX que duplica o CSV é a deduplicação esperada e não gera aviso.
+
+### Corrigido
+
+- `client`: `CapesClient.download_resource` chamava `download_with_manifest` com `manifest_path=` e sem `source_id`, `dataset_id` e `producer` (`TypeError` em qualquer chamada real; o teste mockava o método do core). Agora recebe `dataset_id` (obrigatório), `source_id="capes"`, `producer="capes-fetcher"`, `force` e `expected_format` (por padrão, o da extensão do destino, de modo que HTML de bloqueio com HTTP 200 não vira arquivo), e devolve o `Path` baixado, como o core, em vez de um manifesto. Testada com o `download_with_manifest` real sobre transporte simulado. Nada no monorepo a chamava.
+- `client`: o cliente da descoberta (`package_list`, `package_show`) deixa de ser um `HttpClient` próprio e passa a ser o cliente padrão do host, que respeita `QUANTILICA_HTTP_*`, `QUANTILICA_SSL_VERIFY` e o bundle de CA. O tempo por requisição fica em no mínimo 300 s (o servidor é lento), salvo `QUANTILICA_HTTP_TIMEOUT`. Sem o host instalado, cai num cliente do core com a verificação TLS lida do ambiente.
+- `plugin`: o HEAD de frescor do `check` usa o cliente padrão do host, com o orçamento curto de antes (30 s, 2 tentativas).
+
+### Alterado
+
+- Dependência de desenvolvimento: `quantilica-cli>=0.30.0`.
+
 ## [0.5.2] - 2026-11-24
 
 ### Corrigido

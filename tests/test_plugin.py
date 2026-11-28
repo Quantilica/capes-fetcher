@@ -113,3 +113,45 @@ def test_download_client_respeita_o_ambiente(
     assert client.timeout == 42.0
     assert client.attempts == 7
     assert client.retry_base_delay == 3.0
+
+
+def test_grupos_vazios_por_desenho_sao_os_que_so_tem_pacotes_listados() -> None:
+    """``expected_empty_groups`` = grupos sem nenhum pacote ``r1`` (e só eles)."""
+    from capes_fetcher.plugin import EXPECTED_EMPTY_GROUPS, fetcher
+
+    so_listados = {
+        group
+        for group in catalog.GROUPS
+        if not any(
+            pkg.group == group and pkg.tier == "r1" for pkg in catalog.CATALOG.values()
+        )
+    }
+    assert set(EXPECTED_EMPTY_GROUPS) == so_listados
+    assert len(EXPECTED_EMPTY_GROUPS) == 8
+    assert fetcher.expected_empty_groups == frozenset(EXPECTED_EMPTY_GROUPS)
+    # Os que baixam nunca podem estar na lista: precisam continuar falhando.
+    assert not {"teses", "programas", "cursos"} & set(EXPECTED_EMPTY_GROUPS)
+
+
+def test_probe_head_usa_o_cliente_padrao_com_orcamento_curto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx2
+    from quantilica.core.http import HttpClient
+
+    from capes_fetcher import plugin
+
+    built: list[HttpClient] = []
+
+    def fake_default_client() -> HttpClient:
+        client = HttpClient(
+            transport=httpx2.MockTransport(lambda req: httpx2.Response(200))
+        )
+        built.append(client)
+        return client
+
+    monkeypatch.setattr(plugin, "default_client", fake_default_client)
+    response = plugin._probe_head("https://capes.test/x.csv")
+    assert response.status_code == 200
+    assert built[0].timeout == plugin.PROBE_TIMEOUT
+    assert built[0].attempts == plugin.PROBE_ATTEMPTS

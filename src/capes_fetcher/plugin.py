@@ -82,6 +82,19 @@ def path_builder(
     return DataRepository(output_dir).path_for_entry(entry, last_modified=stamp)
 
 
+# Grupos que só têm pacotes "listed" (catalogados, nunca baixados): vazios por
+# desenho. Os que baixam (teses, programas, cursos) continuam falhando se esvaziarem.
+EXPECTED_EMPTY_GROUPS = (
+    "pessoas",
+    "producao",
+    "projetos",
+    "bolsas",
+    "formacao-professores",
+    "fomento",
+    "periodicos",
+    "gestao",
+)
+
 # O servidor da CAPES é lento e instável: responde 503 sob carga, às vezes só
 # envia os cabeçalhos depois de minutos (o proxy devolve 504 aos ~300 s) e
 # entrega os CSVs de teses (~450 MB cada) a dezenas de KB/s ou poucas centenas
@@ -105,6 +118,10 @@ def path_builder(
 # Tempo, tentativas e espera são sobrescrevíveis por ``QUANTILICA_HTTP_TIMEOUT``
 # / ``_ATTEMPTS`` / ``_RETRY_DELAY``.
 DEFAULT_WORKERS = 2
+# HEAD de frescor: curto, para um recurso lento não segurar o ``check``.
+PROBE_TIMEOUT = 30.0
+PROBE_ATTEMPTS = 2
+PROBE_RETRY_DELAY = 1.0
 DOWNLOAD_READ_TIMEOUT = 600.0
 DOWNLOAD_ATTEMPTS = 6
 DOWNLOAD_RETRY_DELAY = 30.0
@@ -141,6 +158,8 @@ fetcher = FetcherApp(
     default_output=Path("/data/capes"),
     client=_build_client(),
     freshness_policy=FreshnessPolicy.HEAD_FALLBACK_GET,
+    # Grupos só com pacotes "listed": catalogados, sem arquivo para baixar.
+    expected_empty_groups=EXPECTED_EMPTY_GROUPS,
 )
 
 
@@ -150,7 +169,11 @@ def _http_date(moment: dt.datetime) -> str:
 
 def _probe_head(url: str) -> Any:
     """HEAD rápido (poucas tentativas) para recursos sem tamanho no CKAN."""
-    with HttpClient(timeout=30.0, attempts=2, retry_base_delay=1.0) as client:
+    # Cliente padrão do host (``QUANTILICA_HTTP_*``, SSL, CA) com orçamento curto.
+    with default_client() as client:
+        client.timeout = PROBE_TIMEOUT
+        client.attempts = PROBE_ATTEMPTS
+        client.retry_base_delay = PROBE_RETRY_DELAY
         return client.head(url)
 
 
